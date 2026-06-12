@@ -1,9 +1,9 @@
 name: CI
 
+# Manual-only while iterating on a private repo (saves Actions minutes).
+# Restore push/pull_request triggers when the repo opens up.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
