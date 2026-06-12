@@ -74,6 +74,8 @@ pub struct WindowState {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DialogState {
+    /// "macos" | "windows" | "linux" — drives the renderer's theme.
+    pub platform: String,
     /// None = `--title none` (hide the title area).
     pub title: Option<String>,
     pub subtitle: Option<String>,
@@ -124,6 +126,12 @@ impl DialogState {
         });
 
         DialogState {
+            platform: match crate::compat::Platform::current() {
+                crate::compat::Platform::MacOs => "macos",
+                crate::compat::Platform::Windows => "windows",
+                crate::compat::Platform::Linux => "linux",
+            }
+            .to_string(),
             title,
             subtitle: opt_value(config, "subtitle"),
             message: config

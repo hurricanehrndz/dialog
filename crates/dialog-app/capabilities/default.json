@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main dialog window: invoke commands and receive state events",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

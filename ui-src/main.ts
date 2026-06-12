@@ -1,0 +1,163 @@
+// Dialog renderer: draws one DialogState and emits semantic UI events.
+// All contract logic lives on the Rust side (design D2); this file only
+// renders state and reports interactions.
+
+interface ButtonState {
+  text: string;
+  visible: boolean;
+  enabled: boolean;
+  action: string | null;
+}
+
+interface DialogState {
+  platform: "macos" | "windows" | "linux";
+  title: string | null;
+  subtitle: string | null;
+  message: string;
+  messageAlignment: "left" | "center" | "right";
+  messagePosition: string | null;
+  titleFont: string | null;
+  messageFont: string | null;
+  icon: {
+    source: string;
+    size: number;
+    alpha: number;
+    altText: string;
+    overlay: string | null;
+    hidden: boolean;
+  };
+  button1: ButtonState;
+  button2: ButtonState;
+  infoButton: ButtonState;
+  timer: { seconds: number; hideBar: boolean } | null;
+  window: { appearance: string | null };
+}
+
+declare global {
+  interface Window {
+    __TAURI__: {
+      core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
+    };
+  }
+}
+
+const invoke = (cmd: string, args?: Record<string, unknown>) =>
+  window.__TAURI__.core.invoke(cmd, args);
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+/// Parse swiftDialog font specs ("size=30,colour=#FF0000,weight=bold").
+function applyFontSpec(node: HTMLElement, spec: string | null) {
+  if (!spec) return;
+  for (const part of spec.split(",")) {
+    const [key, value] = part.split("=").map((s) => s.trim());
+    if (!value) continue;
+    if (key === "size") node.style.fontSize = `${parseFloat(value)}px`;
+    if (key === "colour" || key === "color") node.style.color = value;
+    if (key === "weight") node.style.fontWeight = value;
+    if (key === "name") node.style.fontFamily = value;
+  }
+}
+
+function sendEvent(event: string) {
+  void invoke("ui_event", { event });
+}
+
+function render(state: DialogState) {
+  document.body.classList.add(`platform-${state.platform}`);
+  if (state.window.appearance) {
+    document.documentElement.dataset.appearance = state.window.appearance;
+  }
+
+  const root = el("div", "dialog");
+
+  // Icon column
+  if (!state.icon.hidden) {
+    const iconBox = el("div", "icon");
+    iconBox.style.width = `${state.icon.size}px`;
+    iconBox.style.opacity = String(state.icon.alpha);
+    // Placeholder glyph until the icon-resolution pipeline lands (group 5).
+    iconBox.appendChild(el("div", "icon-default", "💬"));
+    iconBox.setAttribute("role", "img");
+    iconBox.setAttribute("aria-label", state.icon.altText);
+    root.appendChild(iconBox);
+  }
+
+  // Content column
+  const content = el("div", "content");
+  if (state.title !== null) {
+    const title = el("h1", "title", state.title);
+    applyFontSpec(title, state.titleFont);
+    content.appendChild(title);
+    if (state.subtitle) content.appendChild(el("h2", "subtitle", state.subtitle));
+  }
+  const message = el("div", "message", state.message);
+  message.style.textAlign = state.messageAlignment;
+  if (state.messagePosition === "centre" || state.messagePosition === "center") {
+    message.classList.add("v-center");
+  } else if (state.messagePosition === "bottom") {
+    message.classList.add("v-bottom");
+  }
+  applyFontSpec(message, state.messageFont);
+  content.appendChild(message);
+
+  // Timer bar
+  if (state.timer && !state.timer.hideBar) {
+    const bar = el("div", "timer-bar");
+    const fill = el("div", "timer-fill");
+    const label = el("div", "timer-label");
+    bar.appendChild(fill);
+    bar.appendChild(label);
+    content.appendChild(bar);
+    const total = state.timer.seconds * 1000;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const remaining = Math.max(0, total - (now - start));
+      fill.style.width = `${(remaining / total) * 100}%`;
+      label.textContent = String(Math.ceil(remaining / 1000));
+      if (remaining > 0) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // Button bar
+  const buttons = el("div", "buttons");
+  if (state.infoButton.visible) {
+    const info = el("button", "btn info", state.infoButton.text);
+    info.addEventListener("click", () => sendEvent("info"));
+    buttons.appendChild(info);
+  }
+  buttons.appendChild(el("div", "spacer"));
+  if (state.button2.visible) {
+    const b2 = el("button", "btn", state.button2.text);
+    b2.disabled = !state.button2.enabled;
+    b2.addEventListener("click", () => sendEvent("button2"));
+    buttons.appendChild(b2);
+  }
+  const b1 = el("button", "btn primary", state.button1.text);
+  b1.disabled = !state.button1.enabled;
+  b1.addEventListener("click", () => sendEvent("button1"));
+  buttons.appendChild(b1);
+  content.appendChild(buttons);
+
+  root.appendChild(content);
+  document.body.replaceChildren(root);
+
+  // Keyboard contract: Return = button1, Escape = button2 (when visible).
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && state.button1.enabled) sendEvent("button1");
+    if (e.key === "Escape" && state.button2.visible && state.button2.enabled)
+      sendEvent("button2");
+  });
+}
+
+invoke("get_state").then((state) => render(state as DialogState));

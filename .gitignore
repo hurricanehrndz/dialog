@@ -74,3 +74,5 @@ tmbootpicker.efi
 ### Rust
 target/
 crates/dialog-app/gen/
+
+node_modules/

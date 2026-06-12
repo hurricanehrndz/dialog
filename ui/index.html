@@ -7,18 +7,143 @@
     <style>
       :root {
         color-scheme: light dark;
-        font-family: system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", sans-serif;
+        --bg: #ececec;
+        --fg: #1d1d1f;
+        --accent: #0a60ff;
+        --btn-bg: #ffffff;
+        --btn-border: #d0d0d0;
       }
-      body {
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #2b2b2d;
+          --fg: #f2f2f2;
+          --btn-bg: #5a5a5e;
+          --btn-border: #444;
+        }
+      }
+      :root[data-appearance="dark"] {
+        color-scheme: dark;
+        --bg: #2b2b2d;
+        --fg: #f2f2f2;
+        --btn-bg: #5a5a5e;
+        --btn-border: #444;
+      }
+      :root[data-appearance="light"] {
+        color-scheme: light;
+        --bg: #ececec;
+        --fg: #1d1d1f;
+        --btn-bg: #ffffff;
+        --btn-border: #d0d0d0;
+      }
+      * { box-sizing: border-box; }
+      html, body {
         margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: default;
+        overflow: hidden;
+      }
+      body { font: 13px/1.45 system-ui, sans-serif; }
+      body.platform-macos {
+        font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+      }
+      body.platform-windows {
+        font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      }
+
+      .dialog {
+        display: flex;
+        height: 100%;
+        padding: 20px;
+        gap: 20px;
+      }
+      .icon {
+        flex: none;
         display: grid;
         place-items: center;
-        height: 100vh;
-        user-select: none;
+        align-self: center;
       }
+      .icon-default { font-size: 96px; line-height: 1; }
+      .content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .title {
+        font-size: 26px;
+        font-weight: 700;
+        margin: 0 0 2px;
+      }
+      .subtitle {
+        font-size: 15px;
+        font-weight: 400;
+        opacity: 0.75;
+        margin: 0 0 8px;
+      }
+      .message {
+        flex: 1;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-size: 14px;
+        padding-top: 6px;
+      }
+      .message.v-center { display: grid; align-content: center; }
+      .message.v-bottom { display: grid; align-content: end; }
+
+      .timer-bar {
+        position: relative;
+        height: 6px;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--fg) 15%, transparent);
+        margin: 8px 0 2px;
+      }
+      .timer-fill {
+        height: 100%;
+        border-radius: 3px;
+        background: var(--accent);
+        transition: width 0.25s linear;
+      }
+      .timer-label {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 9px;
+        opacity: 0.8;
+      }
+
+      .buttons {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding-top: 12px;
+      }
+      .spacer { flex: 1; }
+      .btn {
+        font: inherit;
+        padding: 4px 18px;
+        border-radius: 6px;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--fg);
+        min-width: 72px;
+      }
+      .btn:disabled { opacity: 0.45; }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 500;
+      }
+      body.platform-windows .btn { border-radius: 4px; }
+      .btn.info { min-width: 0; }
     </style>
   </head>
   <body>
-    <h1>dialog</h1>
+    <script src="main.js" defer></script>
   </body>
 </html>

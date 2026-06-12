@@ -7,15 +7,8 @@
     "frontendDist": "../../ui"
   },
   "app": {
-    "windows": [
-      {
-        "title": "dialog",
-        "width": 820,
-        "height": 380,
-        "resizable": false,
-        "center": true
-      }
-    ],
+    "windows": [],
+    "withGlobalTauri": true,
     "security": {
       "csp": null
     }
