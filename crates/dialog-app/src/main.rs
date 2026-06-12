@@ -25,9 +25,18 @@ fn implemented() -> HashSet<&'static str> {
 /// contract works from PowerShell/cmd (cli-compatibility spec).
 #[cfg(windows)]
 fn attach_parent_console() {
-    use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{
+        AttachConsole, GetStdHandle, ATTACH_PARENT_PROCESS, STD_OUTPUT_HANDLE,
+    };
     unsafe {
-        AttachConsole(ATTACH_PARENT_PROCESS);
+        // Only attach when stdout is not already wired up: AttachConsole
+        // resets the std handles, which would clobber a pipe the invoking
+        // shell set up to capture our output ($x = & dialog.exe ...).
+        let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+        if stdout.is_null() || stdout == INVALID_HANDLE_VALUE {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+        }
     }
 }
 
