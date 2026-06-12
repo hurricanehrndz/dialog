@@ -17,9 +17,9 @@
 
 ## 3. Dialog state model and renderer bridge
 
-- [ ] 3.1 Define the `DialogState` model in Rust (serde-serializable) covering Tier 1 surface; full-state push + patch events to the webview
-- [ ] 3.2 Define semantic UI event channel from webview to Rust (button clicks, input changes, list selection) wired to exit/output logic
-- [ ] 3.3 Frontend shell: render title/subtitle/markdown message/icon area/button bar from DialogState; platform theme switch (macOS vs Fluent tokens)
+- [x] 3.1 Define the `DialogState` model in Rust (serde-serializable) covering Tier 1 surface; full-state push + patch events to the webview
+- [x] 3.2 Define semantic UI event channel from webview to Rust (button clicks, input changes, list selection) wired to exit/output logic
+- [x] 3.3 Frontend shell: render title/subtitle/markdown message/icon area/button bar from DialogState; platform theme switch (macOS vs Fluent tokens)
 
 ## 4. Core content (dialog-core)
 
@@ -39,9 +39,9 @@
 
 ## 6. Buttons and lifecycle (buttons-actions)
 
-- [ ] 6.1 Button 1/2/info rendering, default labels (OK/Cancel), enable/disable, actions (open URL), exit-code wiring
+- [x] 6.1 Button 1/2/info rendering, default labels (OK/Cancel), enable/disable, actions (open URL), exit-code wiring
 - [ ] 6.2 Keyboard handling: Return = button1, Escape = button2, quitkey (Cmd/Ctrl+char) → exit 10
-- [ ] 6.3 Timer with countdown bar, default 10 s, `--hidetimerbar`, exit 4
+- [x] 6.3 Timer with countdown bar, default 10 s, `--hidetimerbar`, exit 4
 - [ ] 6.4 Button styles (`stack`/`center`), sizes, button symbols via icon pipeline
 
 ## 7. User input (user-input)
