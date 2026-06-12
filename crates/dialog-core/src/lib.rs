@@ -9,3 +9,4 @@ pub mod exit_codes;
 pub mod options;
 pub mod output;
 pub mod parser;
+pub mod state;

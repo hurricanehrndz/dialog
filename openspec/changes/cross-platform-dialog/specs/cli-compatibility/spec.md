@@ -64,8 +64,9 @@ The binary SHALL accept full dialog configuration via `--jsonfile <path>` and `-
 On Windows the binary SHALL attach to the parent process console so that stdout (JSON output) and stderr (warnings) are visible to the invoking PowerShell/cmd session and capturable via redirection, while not flashing a console window when launched outside one.
 
 #### Scenario: PowerShell captures JSON output
-- **WHEN** a PowerShell script runs `$result = & dialog.exe --textfield "Name" --json` and the user submits the form
+- **WHEN** a PowerShell script runs `$result = & dialog.exe --textfield "Name" --json | Out-String` and the user submits the form
 - **THEN** `$result` contains the JSON output string
+- (Note, verified on the rig: plain `$x = & gui.exe` is fire-and-forget for GUI-subsystem executables — a PowerShell semantic affecting all GUI apps. Any pipeline stage forces wait-and-capture; bare runs print to the console via conditional AttachConsole.)
 
 ### Requirement: Version and help output
 `--version` SHALL print the application version to stdout and exit 0. `--help` SHALL print usage covering the implemented option set and exit 0. `--verbose` SHALL enable debug logging to stderr.

@@ -46,12 +46,12 @@ jobs:
       - run: cargo test --workspace
       - name: stdout reaches the invoking console (AttachConsole)
         # Verifies the cli-compatibility requirement "stdout reaches the
-        # invoking console on Windows". Expected to fail until task 2.7
-        # implements AttachConsole in the release (GUI-subsystem) binary.
-        continue-on-error: true
+        # invoking console on Windows". Piped form: PowerShell launches
+        # GUI-subsystem exes fire-and-forget unless a pipeline forces
+        # wait-and-capture (verified on the rig, see cli-compatibility spec).
         shell: pwsh
         run: |
           cargo build --release -p dialog-app
-          $out = & target/release/dialog.exe --version
-          if (-not $out) { throw "no stdout captured from GUI-subsystem binary" }
-          Write-Host "captured: $out"
+          $out = & target/release/dialog.exe --version | Out-String
+          if (-not $out.Trim()) { throw "no stdout captured from GUI-subsystem binary" }
+          Write-Host "captured: $($out.Trim())"
