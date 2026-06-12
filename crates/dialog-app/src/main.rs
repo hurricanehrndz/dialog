@@ -47,6 +47,14 @@ fn implemented() -> HashSet<&'static str> {
         "resizable",
         "appearance",
         "hideicon",
+        // dialog-core layout & text
+        "small",
+        "big",
+        "mini",
+        "style",
+        "titlefont",
+        "messagefont",
+        "quitkey",
     ]
     .into_iter()
     .collect()
@@ -117,6 +125,17 @@ fn open_url(url: &str) {
 #[tauri::command]
 fn get_state(app: tauri::State<App>) -> DialogState {
     app.dialog.lock().unwrap().clone()
+}
+
+/// Open a markdown link in the default browser (web schemes only — the
+/// webview must never navigate or launch arbitrary local programs).
+#[tauri::command]
+fn open_link(url: String) {
+    if url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:") {
+        open_url(&url);
+    } else {
+        eprintln!("WARNING: refusing to open non-web link {url}");
+    }
 }
 
 #[tauri::command]
@@ -200,7 +219,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(app)
-        .invoke_handler(tauri::generate_handler![get_state, ui_event])
+        .invoke_handler(tauri::generate_handler![get_state, ui_event, open_link])
         .setup(move |tauri_app| {
             let w = &state.window;
             // swiftDialog windows are chromeless (no title bar); dragging

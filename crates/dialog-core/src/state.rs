@@ -93,6 +93,12 @@ pub struct DialogState {
     pub info_button: ButtonState,
     pub timer: Option<TimerState>,
     pub window: WindowState,
+    /// Compact 540×128 layout (`--mini` or `--style mini`).
+    pub mini: bool,
+    /// `--style` preset (centred/alert/caution/warning/presentation/...).
+    pub style: Option<String>,
+    /// Quit key character (Cmd/Ctrl+<key> exits 10). Default "q".
+    pub quit_key: String,
 }
 
 fn opt_value(config: &Config, name: &str) -> Option<String> {
@@ -113,6 +119,36 @@ impl DialogState {
             Some("none") => None,
             Some(t) => Some(t.to_string()),
             None => None,
+        };
+
+        let style = opt_value(config, "style");
+        let mini = config.present("mini") || style.as_deref() == Some("mini");
+
+        // --small/--big scale the *default* window size (ProcessCLOptions
+        // scaleFactor 0.75/1.25); explicit --width/--height win unscaled;
+        // mini forces 540×128 (dialogApp.swift:236-239).
+        let scale = if config.present("small") {
+            0.75
+        } else if config.present("big") {
+            1.25
+        } else {
+            1.0
+        };
+        let (width, height) = if mini {
+            (540.0, 128.0)
+        } else {
+            (
+                if config.present("width") {
+                    parse_f64(config, "width", 820.0)
+                } else {
+                    820.0 * scale
+                },
+                if config.present("height") {
+                    parse_f64(config, "height", 380.0)
+                } else {
+                    380.0 * scale
+                },
+            )
         };
 
         // button2 appears with --button2 or --button2text;
@@ -189,9 +225,15 @@ impl DialogState {
                 action: opt_value(config, "infobuttonaction"),
             },
             timer,
+            mini,
+            style,
+            quit_key: config
+                .value("quitkey")
+                .map(|v| v.into_owned())
+                .unwrap_or_else(|| "q".into()),
             window: WindowState {
-                width: parse_f64(config, "width", 820.0),
-                height: parse_f64(config, "height", 380.0),
+                width,
+                height,
                 position: opt_value(config, "position"),
                 position_offset: parse_f64(config, "positionoffset", 16.0),
                 ontop: config.present("ontop"),
@@ -252,6 +294,36 @@ mod tests {
     fn centre_spelling_accepted() {
         let s = state(&["--messagealignment", "centre"]);
         assert_eq!(s.message_alignment, Alignment::Center);
+    }
+
+    #[test]
+    fn small_and_big_scale_default_window() {
+        let s = state(&["--small"]);
+        assert_eq!((s.window.width, s.window.height), (615.0, 285.0));
+        let s = state(&["--big"]);
+        assert_eq!((s.window.width, s.window.height), (1025.0, 475.0));
+    }
+
+    #[test]
+    fn explicit_size_wins_over_scale() {
+        let s = state(&["--small", "--width", "700"]);
+        assert_eq!(s.window.width, 700.0);
+        assert_eq!(s.window.height, 285.0);
+    }
+
+    #[test]
+    fn mini_forces_540_by_128() {
+        for args in [&["--mini"][..], &["--style", "mini"][..]] {
+            let s = state(args);
+            assert!(s.mini);
+            assert_eq!((s.window.width, s.window.height), (540.0, 128.0));
+        }
+    }
+
+    #[test]
+    fn quit_key_default_and_override() {
+        assert_eq!(state(&["--message", "x"]).quit_key, "q");
+        assert_eq!(state(&["--quitkey", "x"]).quit_key, "x");
     }
 
     #[test]

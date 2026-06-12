@@ -2,6 +2,8 @@
 // All contract logic lives on the Rust side (design D2); this file only
 // renders state and reports interactions.
 
+import { marked } from "marked";
+
 interface ButtonState {
   text: string;
   visible: boolean;
@@ -30,7 +32,10 @@ interface DialogState {
   button2: ButtonState;
   infoButton: ButtonState;
   timer: { seconds: number; hideBar: boolean } | null;
-  window: { appearance: string | null };
+  window: { appearance: string | null; moveable: boolean };
+  mini: boolean;
+  style: string | null;
+  quitKey: string;
 }
 
 declare global {
@@ -81,6 +86,7 @@ function render(state: DialogState) {
   // region (buttons/inputs stay interactive — Tauri ignores drags that
   // start on interactive elements only if marked, so scope to header/row).
   const root = el("div", "dialog");
+  if (state.mini) root.classList.add("mini");
 
   // Title row: centered across the full window width (upstream layout).
   if (state.title !== null) {
@@ -105,7 +111,17 @@ function render(state: DialogState) {
     iconBox.setAttribute("aria-label", state.icon.altText);
     main.appendChild(iconBox);
   }
-  const message = el("div", "message", state.message);
+  const message = el("div", "message");
+  // CommonMark per the dialog-core spec; links are intercepted below and
+  // opened in the default browser by the Rust side.
+  message.innerHTML = marked.parse(state.message, { async: false });
+  message.addEventListener("click", (e) => {
+    const link = (e.target as HTMLElement).closest("a");
+    if (link?.href) {
+      e.preventDefault();
+      void invoke("open_link", { url: link.href });
+    }
+  });
   message.style.textAlign = state.messageAlignment;
   if (state.messagePosition === "centre" || state.messagePosition === "center") {
     message.classList.add("v-center");
@@ -156,8 +172,13 @@ function render(state: DialogState) {
 
   document.body.replaceChildren(root);
 
-  // Keyboard contract: Return = button1, Escape = button2 (when visible).
+  // Keyboard contract: Return = button1, Escape = button2 (when visible),
+  // Cmd/Ctrl+<quitkey> = exit 10.
   document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === state.quitKey) {
+      sendEvent("quitkey");
+      return;
+    }
     if (e.key === "Enter" && state.button1.enabled) sendEvent("button1");
     if (e.key === "Escape" && state.button2.visible && state.button2.enabled)
       sendEvent("button2");

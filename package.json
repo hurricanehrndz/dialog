@@ -5,6 +5,7 @@
     "build:ui": "esbuild ui-src/main.ts --bundle --outfile=ui/main.js --format=iife --target=safari15,chrome100"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "marked": "^18.0.5"
   }
 }
