@@ -5,23 +5,6 @@
 use crate::options::{self, Kind, OptionDef};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseError {
-    /// Option not present in the swiftDialog contract at all.
-    UnknownOption(String),
-    /// A bare argument where an option was expected.
-    UnexpectedArgument(String),
-}
-
-impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParseError::UnknownOption(o) => write!(f, "unknown option: {o}"),
-            ParseError::UnexpectedArgument(a) => write!(f, "unexpected argument: {a}"),
-        }
-    }
-}
-
 /// Parsed command line, keyed by canonical long option names.
 #[derive(Debug, Default)]
 pub struct ParsedArgs {
@@ -31,6 +14,9 @@ pub struct ParsedArgs {
     values: HashMap<&'static str, Vec<String>>,
     /// Flags that were present.
     flags: Vec<&'static str>,
+    /// Tokens that matched no option — ignored like upstream does;
+    /// surfaced on stderr only under `--verbose`.
+    pub ignored: Vec<String>,
 }
 
 impl ParsedArgs {
@@ -78,7 +64,11 @@ fn lookup(arg: &str) -> Option<&'static OptionDef> {
 }
 
 /// Parse argv (without the program name).
-pub fn parse<I, S>(args: I) -> Result<ParsedArgs, ParseError>
+///
+/// Tokens that match nothing in the option table are recorded in
+/// `ignored` and skipped — upstream scans argv for known options and
+/// never errors on strays (verified live against swiftDialog 3.0.1).
+pub fn parse<I, S>(args: I) -> ParsedArgs
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -88,10 +78,10 @@ where
 
     while let Some(arg) = iter.next() {
         let arg = arg.as_ref();
-        if !arg.starts_with('-') {
-            return Err(ParseError::UnexpectedArgument(arg.to_string()));
-        }
-        let def = lookup(arg).ok_or_else(|| ParseError::UnknownOption(arg.to_string()))?;
+        let Some(def) = lookup(arg) else {
+            parsed.ignored.push(arg.to_string());
+            continue;
+        };
         let canonical = options::canonical(def);
         match canonical.kind {
             Kind::Flag => parsed.flags.push(canonical.long),
@@ -107,7 +97,7 @@ where
             }
         }
     }
-    Ok(parsed)
+    parsed
 }
 
 #[cfg(test)]
@@ -116,7 +106,7 @@ mod tests {
 
     #[test]
     fn parses_long_and_short_forms() {
-        let p = parse(["--title", "Hi", "-m", "There", "--ontop"]).unwrap();
+        let p = parse(["--title", "Hi", "-m", "There", "--ontop"]);
         assert_eq!(p.value("title"), Some("Hi"));
         assert_eq!(p.value("message"), Some("There"));
         assert!(p.present("ontop"));
@@ -124,43 +114,43 @@ mod tests {
 
     #[test]
     fn deprecated_alias_resolves_to_canonical() {
-        let p = parse(["--alignment", "center"]).unwrap();
+        let p = parse(["--alignment", "center"]);
         assert_eq!(p.value("messagealignment"), Some("center"));
         assert!(!p.present("alignment"));
     }
 
     #[test]
-    fn unknown_option_is_an_error() {
-        assert_eq!(
-            parse(["--frobnicate"]).unwrap_err(),
-            ParseError::UnknownOption("--frobnicate".into())
-        );
+    fn unknown_option_is_ignored_like_upstream() {
+        // verified live: swiftDialog 3.0.1 shows the dialog and exits
+        // normally with --frobnicate present
+        let p = parse(["--frobnicate", "--title", "Test"]);
+        assert_eq!(p.ignored, ["--frobnicate"]);
+        assert_eq!(p.value("title"), Some("Test"));
     }
 
     #[test]
-    fn bare_argument_is_an_error() {
-        assert_eq!(
-            parse(["hello"]).unwrap_err(),
-            ParseError::UnexpectedArgument("hello".into())
-        );
+    fn bare_argument_is_ignored() {
+        let p = parse(["hello", "--title", "Hi"]);
+        assert_eq!(p.ignored, ["hello"]);
+        assert_eq!(p.value("title"), Some("Hi"));
     }
 
     #[test]
     fn repeatable_options_accumulate_in_order() {
-        let p = parse(["--textfield", "Name", "--textfield", "Email,required"]).unwrap();
+        let p = parse(["--textfield", "Name", "--textfield", "Email,required"]);
         assert_eq!(p.values("textfield"), ["Name", "Email,required"]);
     }
 
     #[test]
     fn last_value_wins_for_non_repeatable() {
-        let p = parse(["--title", "One", "--title", "Two"]).unwrap();
+        let p = parse(["--title", "One", "--title", "Two"]);
         assert_eq!(p.value("title"), Some("Two"));
     }
 
     #[test]
     fn trailing_value_option_records_empty_value() {
         // matches CLOptions.swift: option as final argument -> empty string
-        let p = parse(["--message", "hi", "--title"]).unwrap();
+        let p = parse(["--message", "hi", "--title"]);
         assert_eq!(p.value("title"), Some(""));
         assert!(p.present("title"));
     }
@@ -169,14 +159,14 @@ mod tests {
     fn value_option_consumes_next_argument_unconditionally() {
         // upstream takes argv[i+1] as the value even if it looks like an
         // option — compat over cleverness
-        let p = parse(["--title", "--ontop"]).unwrap();
+        let p = parse(["--title", "--ontop"]);
         assert_eq!(p.value("title"), Some("--ontop"));
         assert!(!p.present("ontop"));
     }
 
     #[test]
     fn defaults_come_from_the_table() {
-        let p = parse(["--message", "hi"]).unwrap();
+        let p = parse(["--message", "hi"]);
         assert_eq!(p.value_or_default("button1text"), Some("OK"));
         assert_eq!(p.value_or_default("width"), Some("820"));
         assert_eq!(p.value_or_default("title"), Some("default-title"));
@@ -184,7 +174,7 @@ mod tests {
 
     #[test]
     fn flag_followed_by_option_does_not_swallow_it() {
-        let p = parse(["--ontop", "--title", "Hi"]).unwrap();
+        let p = parse(["--ontop", "--title", "Hi"]);
         assert!(p.present("ontop"));
         assert_eq!(p.value("title"), Some("Hi"));
     }

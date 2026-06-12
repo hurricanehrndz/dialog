@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn unimplemented_option_warns_but_parses() {
-        let args = parse(["--title", "Hi", "--blurscreen"]).unwrap();
+        let args = parse(["--title", "Hi", "--blurscreen"]);
         let warnings = degrade_warnings(&args, &implemented(&["title"]), Platform::Windows);
         assert_eq!(
             warnings,
@@ -106,21 +106,21 @@ mod tests {
 
     #[test]
     fn mac_only_option_is_platform_unavailable_on_windows() {
-        let args = parse(["--notification"]).unwrap();
+        let args = parse(["--notification"]);
         let warnings = degrade_warnings(&args, &implemented(&["notification"]), Platform::Windows);
         assert_eq!(warnings[0].reason, DegradeReason::PlatformUnavailable);
     }
 
     #[test]
     fn mac_only_option_on_macos_falls_through_to_implemented_check() {
-        let args = parse(["--notification"]).unwrap();
+        let args = parse(["--notification"]);
         let warnings = degrade_warnings(&args, &implemented(&["notification"]), Platform::MacOs);
         assert!(warnings.is_empty());
     }
 
     #[test]
     fn implemented_options_do_not_warn() {
-        let args = parse(["--title", "Hi", "--ontop"]).unwrap();
+        let args = parse(["--title", "Hi", "--ontop"]);
         let warnings = degrade_warnings(&args, &implemented(&["title", "ontop"]), Platform::MacOs);
         assert!(warnings.is_empty());
     }

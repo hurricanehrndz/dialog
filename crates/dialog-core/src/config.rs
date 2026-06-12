@@ -104,7 +104,7 @@ mod tests {
     use crate::parser::parse;
 
     fn config(args: &[&str]) -> Config {
-        Config::load(parse(args.iter().copied()).unwrap()).unwrap()
+        Config::load(parse(args.iter().copied())).unwrap()
     }
 
     #[test]
@@ -155,14 +155,14 @@ mod tests {
 
     #[test]
     fn missing_jsonfile_maps_to_exit_202() {
-        let err = Config::load(parse(["--jsonfile", "/nonexistent.json"]).unwrap()).unwrap_err();
+        let err = Config::load(parse(["--jsonfile", "/nonexistent.json"])).unwrap_err();
         assert_eq!(err.exit_code(), 202);
         assert_eq!(err.message(), "ERROR: File not found : /nonexistent.json");
     }
 
     #[test]
     fn bad_json_reports_import_failed() {
-        let err = Config::load(parse(["--jsonstring", "{not json"]).unwrap()).unwrap_err();
+        let err = Config::load(parse(["--jsonstring", "{not json"])).unwrap_err();
         assert_eq!(err.exit_code(), 202);
         assert_eq!(err.message(), "JSON import failed");
     }

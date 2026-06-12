@@ -16,8 +16,8 @@ The binary SHALL accept every swiftDialog CLI option (long form and documented s
 - **THEN** the message alignment is set to center with no error
 
 #### Scenario: Truly unknown option
-- **WHEN** the binary is invoked with an option absent from the swiftDialog contract (e.g. `--frobnicate`)
-- **THEN** the binary reports the unknown option on stderr and exits with a non-zero code without showing a dialog
+- **WHEN** the binary is invoked with an option absent from the swiftDialog contract (e.g. `--frobnicate --title Test`)
+- **THEN** the unknown token is ignored and the dialog is shown normally, matching upstream (verified live against swiftDialog 3.0.1: `--frobnicate` + timer exits 4 with no error output); the ignored token is reported on stderr only under `--verbose`
 
 ### Requirement: swiftDialog exit code contract
 The binary SHALL exit with swiftDialog's exact exit codes: `0` button1/normal exit, `2` button2, `3` info button (when `--quitoninfo`), `4` timer expired, `5` quit via command file `quit:`, `10` quit via quitkey, `15` window close button, `20` "Timeout Exceeded", `30` "Key authorisation required" (`--key` mismatch), `40` SIGTERM received, `201` image resource not found, `202` file not found (e.g. bad `--jsonfile`), `203` invalid colour value, `255` forced immediate exit. (Reference: `AppVariables.swift:53-74`.)
