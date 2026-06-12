@@ -23,10 +23,10 @@
 
 ## 4. Core content (dialog-core)
 
-- [ ] 4.1 Markdown rendering in message body (CommonMark; links open default browser via Rust)
-- [ ] 4.2 Title/message font options (`name=,size=,weight=,colour=`), alignment and vertical position options
-- [ ] 4.3 Default 820×380 window, `--width`/`--height`, size presets `--small`/`--big`/`--mini` and `--style` layouts
-- [ ] 4.4 Light/dark appearance: follow OS, `--appearance` override
+- [x] 4.1 Markdown rendering in message body (CommonMark; links open default browser via Rust)
+- [x] 4.2 Title/message font options (`name=,size=,weight=,colour=`), alignment and vertical position options
+- [x] 4.3 Default 820×380 window, `--width`/`--height`, size presets `--small`/`--big`/`--mini` and `--style` layouts
+- [x] 4.4 Light/dark appearance: follow OS, `--appearance` override
 - [ ] 4.5 Background image with alpha/position/fill options
 
 ## 5. Icons and branding (icon-branding)
@@ -40,7 +40,7 @@
 ## 6. Buttons and lifecycle (buttons-actions)
 
 - [x] 6.1 Button 1/2/info rendering, default labels (OK/Cancel), enable/disable, actions (open URL), exit-code wiring
-- [ ] 6.2 Keyboard handling: Return = button1, Escape = button2, quitkey (Cmd/Ctrl+char) → exit 10
+- [x] 6.2 Keyboard handling: Return = button1, Escape = button2, quitkey (Cmd/Ctrl+char) → exit 10
 - [x] 6.3 Timer with countdown bar, default 10 s, `--hidetimerbar`, exit 4
 - [ ] 6.4 Button styles (`stack`/`center`), sizes, button symbols via icon pipeline
 
