@@ -32,6 +32,8 @@ interface DialogState {
   button2: ButtonState;
   infoButton: ButtonState;
   timer: { seconds: number; hideBar: boolean } | null;
+  progress: { total: number; current: number | null; text: string; visible: boolean } | null;
+  infoText: string | null;
   window: { appearance: string | null; moveable: boolean };
   mini: boolean;
   style: string | null;
@@ -42,6 +44,9 @@ declare global {
   interface Window {
     __TAURI__: {
       core: { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> };
+      event: {
+        listen: (name: string, handler: (e: { payload: unknown }) => void) => Promise<unknown>;
+      };
     };
   }
 }
@@ -132,8 +137,29 @@ function render(state: DialogState) {
   main.appendChild(message);
   root.appendChild(main);
 
-  // Bottom bar: [info] [timer bar] [button2] [button1] (upstream layout).
+  // Overall progress bar (+ progresstext) above the button row.
+  if (state.progress && state.progress.visible) {
+    const wrap = el("div", "progress");
+    const bar = el("div", "progress-bar");
+    const fill = el("div", "progress-fill");
+    if (state.progress.current === null) {
+      fill.classList.add("indeterminate");
+    } else {
+      fill.style.width = `${(state.progress.current / state.progress.total) * 100}%`;
+    }
+    bar.appendChild(fill);
+    wrap.appendChild(bar);
+    if (state.progress.text.trim()) {
+      wrap.appendChild(el("div", "progress-text", state.progress.text));
+    }
+    root.appendChild(wrap);
+  }
+
+  // Bottom bar: [infotext] [info] [timer bar] [button2] [button1].
   const buttons = el("div", "buttons");
+  if (state.infoText) {
+    buttons.appendChild(el("div", "infotext", state.infoText));
+  }
   if (state.infoButton.visible) {
     const info = el("button", "btn info", state.infoButton.text);
     info.addEventListener("click", () => sendEvent("info"));
@@ -171,18 +197,28 @@ function render(state: DialogState) {
   root.appendChild(buttons);
 
   document.body.replaceChildren(root);
-
-  // Keyboard contract: Return = button1, Escape = button2 (when visible),
-  // Cmd/Ctrl+<quitkey> = exit 10.
-  document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === state.quitKey) {
-      sendEvent("quitkey");
-      return;
-    }
-    if (e.key === "Enter" && state.button1.enabled) sendEvent("button1");
-    if (e.key === "Escape" && state.button2.visible && state.button2.enabled)
-      sendEvent("button2");
-  });
 }
 
-invoke("get_state").then((state) => render(state as DialogState));
+let current: DialogState | null = null;
+
+function show(state: DialogState) {
+  current = state;
+  render(state);
+}
+
+// Keyboard contract: Return = button1, Escape = button2 (when visible),
+// Cmd/Ctrl+<quitkey> = exit 10. Bound once; reads the latest state.
+document.addEventListener("keydown", (e) => {
+  if (!current) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === current.quitKey) {
+    sendEvent("quitkey");
+    return;
+  }
+  if (e.key === "Enter" && current.button1.enabled) sendEvent("button1");
+  if (e.key === "Escape" && current.button2.visible && current.button2.enabled)
+    sendEvent("button2");
+});
+
+invoke("get_state").then((state) => show(state as DialogState));
+// Live updates from the command-file watcher: full-state push per change.
+void window.__TAURI__.event.listen("state", (e) => show(e.payload as DialogState));

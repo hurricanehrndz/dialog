@@ -3,6 +3,8 @@
 //! deliberately free of any UI/Tauri dependency so the entire scripting
 //! contract is testable headless.
 
+pub mod commandfile;
+pub mod commands;
 pub mod compat;
 pub mod config;
 pub mod exit_codes;

@@ -16,7 +16,7 @@ pub enum Alignment {
 
 impl Alignment {
     /// Parse swiftDialog's alignment values (`centre` accepted).
-    fn parse(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "center" | "centre" => Alignment::Center,
             "right" => Alignment::Right,
@@ -52,6 +52,18 @@ pub struct IconState {
 pub struct TimerState {
     pub seconds: f64,
     pub hide_bar: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressState {
+    /// Total steps (`--progress <n>`, default 100 when created by a verb).
+    pub total: f64,
+    /// None = indeterminate.
+    pub current: Option<f64>,
+    /// `--progresstext` / `progresstext:` line under the bar.
+    pub text: String,
+    pub visible: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -92,6 +104,9 @@ pub struct DialogState {
     pub button2: ButtonState,
     pub info_button: ButtonState,
     pub timer: Option<TimerState>,
+    pub progress: Option<ProgressState>,
+    /// `--infotext` / `infotext:` — small text in the bottom-left.
+    pub info_text: Option<String>,
     pub window: WindowState,
     /// Compact 540×128 layout (`--mini` or `--style mini`).
     pub mini: bool,
@@ -174,7 +189,7 @@ impl DialogState {
                 .value("message")
                 .map(|v| v.into_owned())
                 .unwrap_or_default(),
-            message_alignment: Alignment::parse(
+            message_alignment: Alignment::parse_str(
                 config
                     .value("messagealignment")
                     .as_deref()
@@ -225,6 +240,27 @@ impl DialogState {
                 action: opt_value(config, "infobuttonaction"),
             },
             timer,
+            progress: config.present("progress").then(|| ProgressState {
+                total: config
+                    .value("progress")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(100.0),
+                // no numeric value -> indeterminate (list-progress spec)
+                current: None,
+                text: config
+                    .value("progresstext")
+                    .map(|v| v.into_owned())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+                visible: true,
+            }),
+            info_text: config.cli.present("infotext").then(|| {
+                config
+                    .value("infotext")
+                    .map(|v| v.into_owned())
+                    .unwrap_or_default()
+            }),
             mini,
             style,
             quit_key: config

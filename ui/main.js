@@ -1304,7 +1304,26 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     applyFontSpec(message, state.messageFont);
     main.appendChild(message);
     root.appendChild(main);
+    if (state.progress && state.progress.visible) {
+      const wrap = el("div", "progress");
+      const bar = el("div", "progress-bar");
+      const fill = el("div", "progress-fill");
+      if (state.progress.current === null) {
+        fill.classList.add("indeterminate");
+      } else {
+        fill.style.width = `${state.progress.current / state.progress.total * 100}%`;
+      }
+      bar.appendChild(fill);
+      wrap.appendChild(bar);
+      if (state.progress.text.trim()) {
+        wrap.appendChild(el("div", "progress-text", state.progress.text));
+      }
+      root.appendChild(wrap);
+    }
     const buttons = el("div", "buttons");
+    if (state.infoText) {
+      buttons.appendChild(el("div", "infotext", state.infoText));
+    }
     if (state.infoButton.visible) {
       const info = el("button", "btn info", state.infoButton.text);
       info.addEventListener("click", () => sendEvent("info"));
@@ -1341,15 +1360,22 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     buttons.appendChild(b1);
     root.appendChild(buttons);
     document.body.replaceChildren(root);
-    document.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === state.quitKey) {
-        sendEvent("quitkey");
-        return;
-      }
-      if (e.key === "Enter" && state.button1.enabled) sendEvent("button1");
-      if (e.key === "Escape" && state.button2.visible && state.button2.enabled)
-        sendEvent("button2");
-    });
   }
-  invoke("get_state").then((state) => render(state));
+  var current = null;
+  function show(state) {
+    current = state;
+    render(state);
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!current) return;
+    if ((e.metaKey || e.ctrlKey) && e.key === current.quitKey) {
+      sendEvent("quitkey");
+      return;
+    }
+    if (e.key === "Enter" && current.button1.enabled) sendEvent("button1");
+    if (e.key === "Escape" && current.button2.visible && current.button2.enabled)
+      sendEvent("button2");
+  });
+  invoke("get_state").then((state) => show(state));
+  void window.__TAURI__.event.listen("state", (e) => show(e.payload));
 })();

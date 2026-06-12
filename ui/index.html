@@ -144,6 +144,39 @@
         opacity: 0.8;
       }
 
+      .progress { padding: 4px 0 2px; }
+      .progress-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg) 15%, transparent);
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        border-radius: 4px;
+        background: var(--accent);
+        transition: width 0.3s ease;
+      }
+      .progress-fill.indeterminate {
+        width: 30%;
+        animation: indet 1.4s ease-in-out infinite alternate;
+      }
+      @keyframes indet {
+        from { margin-left: 0; }
+        to { margin-left: 70%; }
+      }
+      .progress-text {
+        text-align: center;
+        font-size: 11px;
+        opacity: 0.8;
+        padding-top: 4px;
+      }
+      .infotext {
+        font-size: 11px;
+        opacity: 0.65;
+        align-self: center;
+      }
+
       .buttons {
         display: flex;
         gap: 10px;

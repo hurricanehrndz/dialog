@@ -1,11 +1,18 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
 use dialog_core::{
-    compat, config::Config, exit_codes, output::UserInput, parser, state::DialogState,
+    commandfile::{default_path, CommandFileTail},
+    commands::{self, Command},
+    compat,
+    config::Config,
+    exit_codes,
+    output::UserInput,
+    parser,
+    state::DialogState,
 };
 use std::collections::HashSet;
 use std::sync::Mutex;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -55,6 +62,11 @@ fn implemented() -> HashSet<&'static str> {
         "titlefont",
         "messagefont",
         "quitkey",
+        // command-file IPC & progress
+        "commandfile",
+        "progress",
+        "progresstext",
+        "infotext",
     ]
     .into_iter()
     .collect()
@@ -169,6 +181,72 @@ fn ui_event(app: tauri::State<App>, event: String) {
     }
 }
 
+/// Window-level commands the content applier can't handle (quit, resize,
+/// reposition, activate). Runs on the watcher thread via AppHandle.
+fn handle_shell_command(handle: &tauri::AppHandle, cmd: &Command) {
+    let Some(window) = handle.get_webview_window("main") else {
+        return;
+    };
+    match cmd {
+        Command::Quit => {
+            let app = handle.state::<App>();
+            quit(&app, exit_codes::QUIT_COMMAND);
+        }
+        Command::Activate => {
+            let _ = window.set_focus();
+        }
+        Command::Width(w) => {
+            if let Ok(size) = window.inner_size() {
+                let scale = window.scale_factor().unwrap_or(1.0);
+                let h = size.height as f64 / scale;
+                let _ = window.set_size(tauri::LogicalSize::new(*w, h));
+            }
+        }
+        Command::Height(h) => {
+            if let Ok(size) = window.inner_size() {
+                let scale = window.scale_factor().unwrap_or(1.0);
+                let w = size.width as f64 / scale;
+                let _ = window.set_size(tauri::LogicalSize::new(w, *h));
+            }
+        }
+        Command::Position(anchor) => position_window(&window, anchor, 16.0),
+        _ => {}
+    }
+}
+
+/// Place the window at one of swiftDialog's nine screen anchors.
+fn position_window(window: &tauri::WebviewWindow, anchor: &str, offset: f64) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let Ok(win) = window.outer_size() else {
+        return;
+    };
+    let screen = monitor.size();
+    let origin = monitor.position();
+    let scale = monitor.scale_factor();
+    let off = offset * scale;
+    let (sw, sh) = (screen.width as f64, screen.height as f64);
+    let (ww, wh) = (win.width as f64, win.height as f64);
+
+    let x = match anchor {
+        "topleft" | "left" | "bottomleft" => off,
+        "top" | "center" | "centre" | "bottom" => (sw - ww) / 2.0,
+        "topright" | "right" | "bottomright" => sw - ww - off,
+        _ => return,
+    };
+    let y = match anchor {
+        "topleft" | "top" | "topright" => off,
+        "left" | "center" | "centre" | "right" => (sh - wh) / 2.0,
+        "bottomleft" | "bottom" | "bottomright" => sh - wh - off,
+        _ => return,
+    };
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        origin.x + x as i32,
+        origin.y + y as i32,
+    ));
+}
+
 fn main() {
     #[cfg(windows)]
     attach_parent_console();
@@ -205,6 +283,11 @@ fn main() {
         eprintln!("{warning}");
     }
 
+    let command_file_path = config
+        .value("commandfile")
+        .map(|v| std::path::PathBuf::from(v.into_owned()))
+        .unwrap_or_else(default_path);
+
     let state = DialogState::from_config(&config);
     let app = App {
         json_output: config.present("json"),
@@ -238,7 +321,10 @@ fn main() {
                     _ => None,
                 });
             }
-            builder.build()?;
+            let window = builder.build()?;
+            if let Some(anchor) = &w.position {
+                position_window(&window, anchor, w.position_offset);
+            }
 
             // Rust-authoritative timer: the frontend bar is cosmetic; the
             // exit (code 4) fires here regardless of webview health.
@@ -251,6 +337,44 @@ fn main() {
                     quit(&app, exit_codes::TIMER);
                 });
             }
+
+            // Command-file watcher: tail for verbs, mutate state, push the
+            // full state to the renderer. 250 ms poll keeps well within the
+            // spec's 1 s budget (notify-based wakeups can come later).
+            let command_path = command_file_path.clone();
+            let handle = tauri_app.handle().clone();
+            std::thread::spawn(move || {
+                let mut tail = match CommandFileTail::open(&command_path) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!(
+                            "WARNING: cannot watch command file {}: {e}",
+                            command_path.display()
+                        );
+                        return;
+                    }
+                };
+                loop {
+                    for line in tail.poll() {
+                        let Some(cmd) = commands::parse_line(&line) else {
+                            eprintln!("DEBUG: ignoring command line: {line}");
+                            continue;
+                        };
+                        let app = handle.state::<App>();
+                        let content_handled = {
+                            let mut dialog = app.dialog.lock().unwrap();
+                            commands::apply(&mut dialog, &cmd)
+                        };
+                        if content_handled {
+                            let snapshot = app.dialog.lock().unwrap().clone();
+                            let _ = handle.emit("state", snapshot);
+                        } else {
+                            handle_shell_command(&handle, &cmd);
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
