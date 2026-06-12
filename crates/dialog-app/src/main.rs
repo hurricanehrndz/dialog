@@ -203,11 +203,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![get_state, ui_event])
         .setup(move |tauri_app| {
             let w = &state.window;
+            // swiftDialog windows are chromeless (no title bar); dragging
+            // is offered only with --moveable via a webview drag region.
             let mut builder = WebviewWindowBuilder::new(tauri_app, "main", WebviewUrl::default())
                 .title("dialog")
                 .inner_size(w.width, w.height)
                 .resizable(w.resizable)
                 .always_on_top(w.ontop)
+                .decorations(false)
                 .center();
             if let Some(appearance) = &w.appearance {
                 builder = builder.theme(match appearance.as_str() {

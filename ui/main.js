@@ -27,6 +27,16 @@
       document.documentElement.dataset.appearance = state.window.appearance;
     }
     const root = el("div", "dialog");
+    if (state.title !== null) {
+      const header = el("div", "header");
+      const title = el("h1", "title", state.title);
+      applyFontSpec(title, state.titleFont);
+      header.appendChild(title);
+      if (state.subtitle) header.appendChild(el("h2", "subtitle", state.subtitle));
+      if (state.window.moveable) header.setAttribute("data-tauri-drag-region", "");
+      root.appendChild(header);
+    }
+    const main = el("div", "main-row");
     if (!state.icon.hidden) {
       const iconBox = el("div", "icon");
       iconBox.style.width = `${state.icon.size}px`;
@@ -34,14 +44,7 @@
       iconBox.appendChild(el("div", "icon-default", "\u{1F4AC}"));
       iconBox.setAttribute("role", "img");
       iconBox.setAttribute("aria-label", state.icon.altText);
-      root.appendChild(iconBox);
-    }
-    const content = el("div", "content");
-    if (state.title !== null) {
-      const title = el("h1", "title", state.title);
-      applyFontSpec(title, state.titleFont);
-      content.appendChild(title);
-      if (state.subtitle) content.appendChild(el("h2", "subtitle", state.subtitle));
+      main.appendChild(iconBox);
     }
     const message = el("div", "message", state.message);
     message.style.textAlign = state.messageAlignment;
@@ -51,14 +54,21 @@
       message.classList.add("v-bottom");
     }
     applyFontSpec(message, state.messageFont);
-    content.appendChild(message);
+    main.appendChild(message);
+    root.appendChild(main);
+    const buttons = el("div", "buttons");
+    if (state.infoButton.visible) {
+      const info = el("button", "btn info", state.infoButton.text);
+      info.addEventListener("click", () => sendEvent("info"));
+      buttons.appendChild(info);
+    }
     if (state.timer && !state.timer.hideBar) {
       const bar = el("div", "timer-bar");
       const fill = el("div", "timer-fill");
       const label = el("div", "timer-label");
       bar.appendChild(fill);
       bar.appendChild(label);
-      content.appendChild(bar);
+      buttons.appendChild(bar);
       const total = state.timer.seconds * 1e3;
       const start = performance.now();
       const tick = (now) => {
@@ -68,14 +78,9 @@
         if (remaining > 0) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
+    } else {
+      buttons.appendChild(el("div", "spacer"));
     }
-    const buttons = el("div", "buttons");
-    if (state.infoButton.visible) {
-      const info = el("button", "btn info", state.infoButton.text);
-      info.addEventListener("click", () => sendEvent("info"));
-      buttons.appendChild(info);
-    }
-    buttons.appendChild(el("div", "spacer"));
     if (state.button2.visible) {
       const b2 = el("button", "btn", state.button2.text);
       b2.disabled = !state.button2.enabled;
@@ -86,8 +91,7 @@
     b1.disabled = !state.button1.enabled;
     b1.addEventListener("click", () => sendEvent("button1"));
     buttons.appendChild(b1);
-    content.appendChild(buttons);
-    root.appendChild(content);
+    root.appendChild(buttons);
     document.body.replaceChildren(root);
     document.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && state.button1.enabled) sendEvent("button1");

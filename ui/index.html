@@ -56,36 +56,39 @@
 
       .dialog {
         display: flex;
-        height: 100%;
-        padding: 20px;
-        gap: 20px;
-      }
-      .icon {
-        flex: none;
-        display: grid;
-        place-items: center;
-        align-self: center;
-      }
-      .icon-default { font-size: 96px; line-height: 1; }
-      .content {
-        flex: 1;
-        display: flex;
         flex-direction: column;
-        min-width: 0;
+        height: 100%;
+        padding: 16px 20px;
+        gap: 8px;
       }
+      .header { text-align: center; }
       .title {
         font-size: 26px;
         font-weight: 700;
-        margin: 0 0 2px;
+        margin: 0;
       }
       .subtitle {
         font-size: 15px;
         font-weight: 400;
         opacity: 0.75;
-        margin: 0 0 8px;
+        margin: 2px 0 0;
       }
+      .main-row {
+        flex: 1;
+        display: flex;
+        gap: 20px;
+        min-height: 0;
+        align-items: center;
+      }
+      .icon {
+        flex: none;
+        display: grid;
+        place-items: center;
+      }
+      .icon-default { font-size: 96px; line-height: 1; }
       .message {
         flex: 1;
+        align-self: stretch;
         overflow-y: auto;
         white-space: pre-wrap;
         font-size: 14px;
@@ -96,10 +99,12 @@
 
       .timer-bar {
         position: relative;
-        height: 6px;
-        border-radius: 3px;
+        flex: 1;
+        height: 8px;
+        border-radius: 4px;
         background: color-mix(in srgb, var(--fg) 15%, transparent);
-        margin: 8px 0 2px;
+        align-self: center;
+        margin: 0 6px;
       }
       .timer-fill {
         height: 100%;

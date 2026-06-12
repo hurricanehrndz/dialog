@@ -77,10 +77,24 @@ function render(state: DialogState) {
   if (state.window.appearance) {
     document.documentElement.dataset.appearance = state.window.appearance;
   }
-
+  // Chromeless window: --moveable turns the whole surface into a drag
+  // region (buttons/inputs stay interactive — Tauri ignores drags that
+  // start on interactive elements only if marked, so scope to header/row).
   const root = el("div", "dialog");
 
-  // Icon column
+  // Title row: centered across the full window width (upstream layout).
+  if (state.title !== null) {
+    const header = el("div", "header");
+    const title = el("h1", "title", state.title);
+    applyFontSpec(title, state.titleFont);
+    header.appendChild(title);
+    if (state.subtitle) header.appendChild(el("h2", "subtitle", state.subtitle));
+    if (state.window.moveable) header.setAttribute("data-tauri-drag-region", "");
+    root.appendChild(header);
+  }
+
+  // Main row: icon beside message.
+  const main = el("div", "main-row");
   if (!state.icon.hidden) {
     const iconBox = el("div", "icon");
     iconBox.style.width = `${state.icon.size}px`;
@@ -89,16 +103,7 @@ function render(state: DialogState) {
     iconBox.appendChild(el("div", "icon-default", "💬"));
     iconBox.setAttribute("role", "img");
     iconBox.setAttribute("aria-label", state.icon.altText);
-    root.appendChild(iconBox);
-  }
-
-  // Content column
-  const content = el("div", "content");
-  if (state.title !== null) {
-    const title = el("h1", "title", state.title);
-    applyFontSpec(title, state.titleFont);
-    content.appendChild(title);
-    if (state.subtitle) content.appendChild(el("h2", "subtitle", state.subtitle));
+    main.appendChild(iconBox);
   }
   const message = el("div", "message", state.message);
   message.style.textAlign = state.messageAlignment;
@@ -108,16 +113,23 @@ function render(state: DialogState) {
     message.classList.add("v-bottom");
   }
   applyFontSpec(message, state.messageFont);
-  content.appendChild(message);
+  main.appendChild(message);
+  root.appendChild(main);
 
-  // Timer bar
+  // Bottom bar: [info] [timer bar] [button2] [button1] (upstream layout).
+  const buttons = el("div", "buttons");
+  if (state.infoButton.visible) {
+    const info = el("button", "btn info", state.infoButton.text);
+    info.addEventListener("click", () => sendEvent("info"));
+    buttons.appendChild(info);
+  }
   if (state.timer && !state.timer.hideBar) {
     const bar = el("div", "timer-bar");
     const fill = el("div", "timer-fill");
     const label = el("div", "timer-label");
     bar.appendChild(fill);
     bar.appendChild(label);
-    content.appendChild(bar);
+    buttons.appendChild(bar);
     const total = state.timer.seconds * 1000;
     const start = performance.now();
     const tick = (now: number) => {
@@ -127,16 +139,9 @@ function render(state: DialogState) {
       if (remaining > 0) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  } else {
+    buttons.appendChild(el("div", "spacer"));
   }
-
-  // Button bar
-  const buttons = el("div", "buttons");
-  if (state.infoButton.visible) {
-    const info = el("button", "btn info", state.infoButton.text);
-    info.addEventListener("click", () => sendEvent("info"));
-    buttons.appendChild(info);
-  }
-  buttons.appendChild(el("div", "spacer"));
   if (state.button2.visible) {
     const b2 = el("button", "btn", state.button2.text);
     b2.disabled = !state.button2.enabled;
@@ -147,9 +152,8 @@ function render(state: DialogState) {
   b1.disabled = !state.button1.enabled;
   b1.addEventListener("click", () => sendEvent("button1"));
   buttons.appendChild(b1);
-  content.appendChild(buttons);
+  root.appendChild(buttons);
 
-  root.appendChild(content);
   document.body.replaceChildren(root);
 
   // Keyboard contract: Return = button1, Escape = button2 (when visible).
