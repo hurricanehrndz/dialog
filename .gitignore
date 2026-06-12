@@ -70,3 +70,7 @@ tmbootpicker.efi
 
 # Repo
 .ext/
+
+### Rust
+target/
+crates/dialog-app/gen/

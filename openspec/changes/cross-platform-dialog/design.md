@@ -42,10 +42,10 @@ stdout JSON + exit  ◀── └─────────────┘   se
 The 132 options are declared in a single table (name, aliases, type, default, tier, platform availability) mirroring `CommandLineArguments.swift`. The parser accepts everything in the table; options whose tier/platform isn't implemented log `WARNING: --<opt> not supported (<reason>), ignoring` to stderr and no-op. This makes "degrade, never break" structural rather than per-feature discipline, and makes compat drift auditable by diffing tables against upstream.
 
 ### D4: Command-file watcher in Rust with seek-offset tailing
-Watch via the `notify` crate with a polling fallback; read newly appended lines from a remembered offset, handle truncation by resetting to zero (matching swiftDialog's tail behavior). Default path: `/var/tmp/dialog.log` on macOS (unchanged) and `%TEMP%\dialog.log` resolved system-wide as `C:\Windows\Temp\dialog.log` is wrong for user context — use `%PUBLIC%\dialog.log` or `C:\ProgramData\dialog\dialog.log` with a permissive ACL so SYSTEM services can write and the user app can read. Exact Windows default is Open Question Q2. File is created world-writable (0666 on macOS, equivalent ACL on Windows) like swiftDialog.
+Watch via the `notify` crate with a polling fallback; read newly appended lines from a remembered offset, handle truncation by resetting to zero (matching swiftDialog's tail behavior). Default path: `/var/tmp/dialog.log` on macOS (unchanged); on Windows `%PUBLIC%\dialog.log` (i.e. `C:\Users\Public\dialog.log`) — **decided 2026-06-12** (was Q2): it exists on every install, BUILTIN\Users and SYSTEM can write there by default (preserving the SYSTEM-writes/user-reads contract), whereas `%TEMP%` is per-account and breaks cross-context signaling. File is created world-writable (0666 on macOS, Everyone-modify ACL on Windows) like swiftDialog.
 
 ### D5: One frontend, two themes
-A single HTML/CSS/TS frontend (no heavy framework; Svelte or vanilla + lit-style components — final pick at implementation) with a platform theme switch: macOS design tokens (system font, vibrancy-like surfaces, macOS button order/styles) vs Fluent tokens (Segoe UI Variable, Win11 corner radii, Fluent buttons). Markdown rendered in the webview with a CommonMark library configured to match swift-markdown-ui's practical behavior (links, bold/italic, headings, lists, images).
+A single HTML/CSS/TS frontend — **decided 2026-06-12** (was Q1): vanilla TypeScript bundled by esbuild (the only frontend dev dependency), no framework; the UI is a declarative render of one DialogState object and a framework would only add bundle weight and build complexity — with a platform theme switch: macOS design tokens (system font, vibrancy-like surfaces, macOS button order/styles) vs Fluent tokens (Segoe UI Variable, Win11 corner radii, Fluent buttons). Markdown rendered in the webview with a CommonMark library configured to match swift-markdown-ui's practical behavior (links, bold/italic, headings, lists, images).
 
 ### D6: Icon resolution as a per-platform Rust module
 Accepted forms (compat): file path, URL (with `--checksum` verification), `SF=name` with color/palette modifiers, app path, builtin keywords (`warningicon`, `infoicon`, `cautionicon`, `default`, `none`).
@@ -74,7 +74,7 @@ Greenfield — no migration. Delivery is staged by tier (Tier 1 capabilities fir
 
 ## Open Questions
 
-- Q1: Frontend layer — Svelte vs vanilla TS components (decide at first implementation task; constraint: zero network deps, inline bundle).
-- Q2: Windows default command-file path and ACL model (`%PUBLIC%`, `ProgramData`, or per-session temp + `--commandfile` always-explicit guidance).
+- Q1: ~~Frontend layer~~ — resolved 2026-06-12, see D5 (vanilla TS + esbuild).
+- Q2: ~~Windows default command-file path~~ — resolved 2026-06-12, see D4 (`%PUBLIC%\dialog.log`).
 - Q3: Whether macOS rendering of `SF=` should use true SF Symbols via native swift shim or pre-rendered assets (fidelity vs build complexity).
 - Q4: Distribution/signing: MSI vs portable exe + notarized pkg/dmg; decide before first public release, not needed for v1 development.

@@ -1,17 +1,17 @@
 ## 1. Project scaffolding
 
 - [ ] 1.1 Initialize Tauri 2.x workspace (Rust core crate + minimal TS frontend, no framework decision yet beyond Q1 in design.md) building and opening a blank window on macOS and Windows
-- [ ] 1.2 Set up CI for both platforms (build + test), including the Windows `AttachConsole` stdout integration test harness skeleton
-- [ ] 1.3 Resolve design Q1 (frontend layer) and Q2 (Windows default command-file path + ACL); record decisions in design.md
+- [x] 1.2 Set up CI for both platforms (build + test), including the Windows `AttachConsole` stdout integration test harness skeleton
+- [x] 1.3 Resolve design Q1 (frontend layer) and Q2 (Windows default command-file path + ACL); record decisions in design.md
 
 ## 2. Option table and CLI parsing (cli-compatibility)
 
-- [ ] 2.1 Transcribe all 132 options from `CommandLineArguments.swift` into the declarative option table (name, short alias, type, default, tier, platform availability)
-- [ ] 2.2 Implement the argument parser over the table: long/short flags, bools vs values, deprecated aliases, unknown-option error path
-- [ ] 2.3 Implement degrade-don't-break: warn-and-noop for known-but-unimplemented or platform-unavailable options
-- [ ] 2.4 Implement `--jsonfile`/`--jsonstring` input mapping onto the same option table, including array forms (textfield, checkbox, selectitems, listitem)
-- [ ] 2.5 Implement exit-code constants and the quit path (codes 0/2/3/4/5/10/15/20/30/40/201/202/203/255), SIGTERM handler included
-- [ ] 2.6 Implement output writer: plain `key : value` lines and `--json` object output with swiftDialog's exact key naming (incl. legacy SelectedOption/SelectedIndex)
+- [x] 2.1 Transcribe all 132 options from `CommandLineArguments.swift` into the declarative option table (name, short alias, type, default, tier, platform availability)
+- [x] 2.2 Implement the argument parser over the table: long/short flags, bools vs values, deprecated aliases, unknown-option error path
+- [x] 2.3 Implement degrade-don't-break: warn-and-noop for known-but-unimplemented or platform-unavailable options
+- [x] 2.4 Implement `--jsonfile`/`--jsonstring` input mapping onto the same option table, including array forms (textfield, checkbox, selectitems, listitem)
+- [x] 2.5 Implement exit-code constants and the quit path (codes 0/2/3/4/5/10/15/20/30/40/201/202/203/255), SIGTERM handler included — constants done; process quit path + SIGTERM wiring lands with the app shell (task 3.2)
+- [x] 2.6 Implement output writer: plain `key : value` lines and `--json` object output with swiftDialog's exact key naming (incl. legacy SelectedOption/SelectedIndex)
 - [ ] 2.7 Windows: AttachConsole on startup; verify stdout capture from PowerShell in CI
 - [ ] 2.8 `--version`, `--help`, `--verbose` output
 
