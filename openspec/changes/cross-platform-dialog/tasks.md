@@ -61,11 +61,11 @@
 
 ## 9. Command file IPC (command-file-ipc)
 
-- [ ] 9.1 File watcher: notify + polling fallback, seek-offset tailing, truncation reset, 0666/ACL creation, default paths per platform
-- [ ] 9.2 Verb parser and dispatch onto DialogState (content verbs: title/subtitle/message+append/icon/image/progress/progresstext/infotext/infobox)
+- [x] 9.1 File watcher: notify + polling fallback, seek-offset tailing, truncation reset, 0666/ACL creation, default paths per platform
+- [x] 9.2 Verb parser and dispatch onto DialogState (content verbs: title/subtitle/message+append/icon/image/progress/progresstext/infotext/infobox)
 - [ ] 9.3 List verbs: `listitem:` by title/index, add/delete, per-row progress, `list:` replace/clear
-- [ ] 9.4 Control verbs: button text/enable/disable, `quit:` (exit 5), `activate:`, width/height/position
-- [ ] 9.5 Malformed-line tolerance and debug logging
+- [x] 9.4 Control verbs: button text/enable/disable, `quit:` (exit 5), `activate:`, width/height/position
+- [x] 9.5 Malformed-line tolerance and debug logging
 
 ## 10. Window behavior (window-behavior)
 
