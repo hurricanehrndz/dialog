@@ -9,6 +9,7 @@ interface ButtonState {
   visible: boolean;
   enabled: boolean;
   action: string | null;
+  symbol: IconRender | null;
 }
 
 interface ListItem {
@@ -50,6 +51,13 @@ interface Select {
   style: string;
 }
 
+// Resolved icon representation from the Rust pipeline (see icon.rs).
+type IconRender =
+  | { kind: "none" }
+  | { kind: "image"; url: string }
+  | { kind: "glyph"; glyph: string; color: string | null }
+  | { kind: "placeholder" };
+
 interface DialogState {
   platform: "macos" | "windows" | "linux";
   title: string | null;
@@ -64,9 +72,25 @@ interface DialogState {
     size: number;
     alpha: number;
     altText: string;
+    centered: boolean;
     overlay: string | null;
     hidden: boolean;
+    render: IconRender;
+    overlayRender: IconRender | null;
   };
+  background: {
+    source: string;
+    render: IconRender;
+    alpha: number;
+    position: string | null;
+    size: string;
+  } | null;
+  banner: {
+    source: string;
+    render: IconRender;
+    title: string | null;
+    height: number | null;
+  } | null;
   button1: ButtonState;
   button2: ButtonState;
   infoButton: ButtonState;
@@ -79,10 +103,18 @@ interface DialogState {
   selects: Select[];
   progress: { total: number; current: number | null; text: string; visible: boolean } | null;
   infoText: string | null;
-  window: { appearance: string | null; moveable: boolean };
+  window: {
+    appearance: string | null;
+    moveable: boolean;
+    fullscreen: boolean;
+    blur: boolean;
+  };
   mini: boolean;
   style: string | null;
   quitKey: string;
+  buttonStyle: string | null;
+  buttonSize: string;
+  buttonTextSize: number | null;
 }
 
 declare global {
@@ -134,6 +166,37 @@ const STATUS_GLYPHS: Record<string, string> = {
   pending: "•••",
 };
 
+/// Draw a resolved icon: an image, a Fluent icon-font glyph, or — when the
+/// source was recognised but not renderable here — the generic placeholder.
+function drawIcon(render: IconRender): HTMLElement {
+  if (render.kind === "image") {
+    const img = el("img", "icon-img") as HTMLImageElement;
+    img.src = render.url;
+    img.decoding = "async";
+    return img;
+  }
+  if (render.kind === "glyph") {
+    const span = el("span", "icon-glyph", render.glyph);
+    if (render.color) span.style.color = render.color;
+    return span;
+  }
+  return el("div", "icon-default", "💬");
+}
+
+/// Build a button, prepending its symbol glyph/image (--button*symbol).
+function buttonEl(cls: string, b: ButtonState, onClick: () => void): HTMLButtonElement {
+  const btn = el("button", cls) as HTMLButtonElement;
+  if (b.symbol && b.symbol.kind !== "none") {
+    const sym = drawIcon(b.symbol);
+    sym.classList.add("btn-symbol");
+    btn.appendChild(sym);
+  }
+  btn.appendChild(document.createTextNode(b.text));
+  btn.disabled = !b.enabled;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
 function renderList(state: DialogState): HTMLElement {
   const list = el("div", "list");
   if (state.listStyle === "compact") list.classList.add("compact");
@@ -173,6 +236,11 @@ function renderList(state: DialogState): HTMLElement {
 
 function render(state: DialogState) {
   document.body.classList.add(`platform-${state.platform}`);
+  // --fullscreen: backdrop covers the display, dialog centered as a card.
+  document.body.classList.toggle("fullscreen", state.window.fullscreen);
+  // --blurscreen: transparent webview so the dimmed desktop shows through.
+  document.body.classList.toggle("blurscreen", state.window.blur);
+  document.documentElement.style.background = state.window.blur ? "transparent" : "";
   if (state.window.appearance) {
     document.documentElement.dataset.appearance = state.window.appearance;
   }
@@ -182,12 +250,29 @@ function render(state: DialogState) {
   const root = el("div", "dialog");
   if (state.mini) root.classList.add("mini");
 
-  // Title row: centered across the full window width (upstream layout).
-  if (state.title !== null) {
+  // Top banner (`--bannerimage`): spans the full width and carries the title.
+  const bannerTitle = state.banner ? state.banner.title ?? state.title : null;
+  if (state.banner) {
+    const banner = el("div", "banner");
+    if (state.banner.height) banner.style.height = `${state.banner.height}px`;
+    if (state.banner.render.kind === "image") {
+      banner.style.backgroundImage = `url("${state.banner.render.url}")`;
+    }
+    if (bannerTitle) banner.appendChild(el("div", "banner-title", bannerTitle));
+    if (state.window.moveable) banner.setAttribute("data-tauri-drag-region", "");
+    root.appendChild(banner);
+  }
+
+  // Title row: centered across the full window width (upstream layout). When a
+  // banner is shown it carries the title, so the header only adds the subtitle.
+  const showHeaderTitle = state.title !== null && !state.banner;
+  if (showHeaderTitle || state.subtitle) {
     const header = el("div", "header");
-    const title = el("h1", "title", state.title);
-    applyFontSpec(title, state.titleFont);
-    header.appendChild(title);
+    if (showHeaderTitle) {
+      const title = el("h1", "title", state.title!);
+      applyFontSpec(title, state.titleFont);
+      header.appendChild(title);
+    }
     if (state.subtitle) header.appendChild(el("h2", "subtitle", state.subtitle));
     if (state.window.moveable) header.setAttribute("data-tauri-drag-region", "");
     root.appendChild(header);
@@ -195,12 +280,21 @@ function render(state: DialogState) {
 
   // Main row: icon beside message.
   const main = el("div", "main-row");
-  if (!state.icon.hidden) {
+  if (!state.icon.hidden && state.icon.render.kind !== "none") {
     const iconBox = el("div", "icon");
+    if (state.icon.centered) iconBox.classList.add("centered");
     iconBox.style.width = `${state.icon.size}px`;
+    iconBox.style.height = `${state.icon.size}px`;
+    // Box drives glyph size (font-size) and image bounds.
+    iconBox.style.fontSize = `${state.icon.size}px`;
     iconBox.style.opacity = String(state.icon.alpha);
-    // Placeholder glyph until the icon-resolution pipeline lands (group 5).
-    iconBox.appendChild(el("div", "icon-default", "💬"));
+    iconBox.appendChild(drawIcon(state.icon.render));
+    // Overlay badge over the lower-trailing corner (--overlayicon).
+    if (state.icon.overlayRender && state.icon.overlayRender.kind !== "none") {
+      const badge = el("div", "icon-overlay");
+      badge.appendChild(drawIcon(state.icon.overlayRender));
+      iconBox.appendChild(badge);
+    }
     iconBox.setAttribute("role", "img");
     iconBox.setAttribute("aria-label", state.icon.altText);
     main.appendChild(iconBox);
@@ -259,13 +353,16 @@ function render(state: DialogState) {
 
   // Bottom bar: [infotext] [info] [timer bar] [button2] [button1].
   const buttons = el("div", "buttons");
+  if (state.buttonStyle === "stack") buttons.classList.add("stack");
+  else if (state.buttonStyle === "center" || state.buttonStyle === "centre")
+    buttons.classList.add("center");
+  buttons.classList.add(`size-${state.buttonSize}`);
+  if (state.buttonTextSize) buttons.style.fontSize = `${state.buttonTextSize}px`;
   if (state.infoText) {
     buttons.appendChild(el("div", "infotext", state.infoText));
   }
   if (state.infoButton.visible) {
-    const info = el("button", "btn info", state.infoButton.text);
-    info.addEventListener("click", () => sendEvent("info"));
-    buttons.appendChild(info);
+    buttons.appendChild(buttonEl("btn info", state.infoButton, () => sendEvent("info")));
   }
   if (state.timer && !state.timer.hideBar) {
     const bar = el("div", "timer-bar");
@@ -287,15 +384,9 @@ function render(state: DialogState) {
     buttons.appendChild(el("div", "spacer"));
   }
   if (state.button2.visible) {
-    const b2 = el("button", "btn", state.button2.text);
-    b2.disabled = !state.button2.enabled;
-    b2.addEventListener("click", () => sendEvent("button2"));
-    buttons.appendChild(b2);
+    buttons.appendChild(buttonEl("btn", state.button2, () => sendEvent("button2")));
   }
-  const b1 = el("button", "btn primary", state.button1.text);
-  b1.disabled = !state.button1.enabled;
-  b1.addEventListener("click", () => void invoke("submit"));
-  buttons.appendChild(b1);
+  buttons.appendChild(buttonEl("btn primary", state.button1, () => void invoke("submit")));
   root.appendChild(buttons);
 
   // Validation error sheet (hidden until "validation-errors" fires).
@@ -303,7 +394,17 @@ function render(state: DialogState) {
   sheet.id = "error-sheet";
   root.appendChild(sheet);
 
-  document.body.replaceChildren(root);
+  // Full-window background image (--background) behind all content.
+  if (state.background && state.background.render.kind === "image") {
+    const bg = el("div", "bg-image");
+    bg.style.backgroundImage = `url("${state.background.render.url}")`;
+    bg.style.opacity = String(state.background.alpha);
+    bg.style.backgroundSize = state.background.size;
+    if (state.background.position) bg.style.backgroundPosition = state.background.position;
+    document.body.replaceChildren(bg, root);
+  } else {
+    document.body.replaceChildren(root);
+  }
 }
 
 function checkboxRow(cb: Checkbox): HTMLElement {

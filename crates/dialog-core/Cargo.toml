@@ -8,3 +8,7 @@ description = "swiftDialog-compatible contract: CLI parsing, JSON I/O, exit code
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Icon pipeline: base64 for data: URLs, ureq for `--icon https://` download
+# (brings a rustls TLS stack — see design D6 / COMPATIBILITY size note).
+base64 = "0.22"
+ureq = "2"

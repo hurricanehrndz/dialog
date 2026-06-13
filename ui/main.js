@@ -1266,6 +1266,32 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     error: "\u2715",
     pending: "\u2022\u2022\u2022"
   };
+  function drawIcon(render2) {
+    if (render2.kind === "image") {
+      const img = el("img", "icon-img");
+      img.src = render2.url;
+      img.decoding = "async";
+      return img;
+    }
+    if (render2.kind === "glyph") {
+      const span = el("span", "icon-glyph", render2.glyph);
+      if (render2.color) span.style.color = render2.color;
+      return span;
+    }
+    return el("div", "icon-default", "\u{1F4AC}");
+  }
+  function buttonEl(cls, b2, onClick) {
+    const btn = el("button", cls);
+    if (b2.symbol && b2.symbol.kind !== "none") {
+      const sym = drawIcon(b2.symbol);
+      sym.classList.add("btn-symbol");
+      btn.appendChild(sym);
+    }
+    btn.appendChild(document.createTextNode(b2.text));
+    btn.disabled = !b2.enabled;
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
   function renderList(state) {
     const list = el("div", "list");
     if (state.listStyle === "compact") list.classList.add("compact");
@@ -1305,26 +1331,51 @@ Please report this to https://github.com/markedjs/marked.`, e) {
   }
   function render(state) {
     document.body.classList.add(`platform-${state.platform}`);
+    document.body.classList.toggle("fullscreen", state.window.fullscreen);
+    document.body.classList.toggle("blurscreen", state.window.blur);
+    document.documentElement.style.background = state.window.blur ? "transparent" : "";
     if (state.window.appearance) {
       document.documentElement.dataset.appearance = state.window.appearance;
     }
     const root = el("div", "dialog");
     if (state.mini) root.classList.add("mini");
-    if (state.title !== null) {
+    const bannerTitle = state.banner ? state.banner.title ?? state.title : null;
+    if (state.banner) {
+      const banner = el("div", "banner");
+      if (state.banner.height) banner.style.height = `${state.banner.height}px`;
+      if (state.banner.render.kind === "image") {
+        banner.style.backgroundImage = `url("${state.banner.render.url}")`;
+      }
+      if (bannerTitle) banner.appendChild(el("div", "banner-title", bannerTitle));
+      if (state.window.moveable) banner.setAttribute("data-tauri-drag-region", "");
+      root.appendChild(banner);
+    }
+    const showHeaderTitle = state.title !== null && !state.banner;
+    if (showHeaderTitle || state.subtitle) {
       const header = el("div", "header");
-      const title = el("h1", "title", state.title);
-      applyFontSpec(title, state.titleFont);
-      header.appendChild(title);
+      if (showHeaderTitle) {
+        const title = el("h1", "title", state.title);
+        applyFontSpec(title, state.titleFont);
+        header.appendChild(title);
+      }
       if (state.subtitle) header.appendChild(el("h2", "subtitle", state.subtitle));
       if (state.window.moveable) header.setAttribute("data-tauri-drag-region", "");
       root.appendChild(header);
     }
     const main = el("div", "main-row");
-    if (!state.icon.hidden) {
+    if (!state.icon.hidden && state.icon.render.kind !== "none") {
       const iconBox = el("div", "icon");
+      if (state.icon.centered) iconBox.classList.add("centered");
       iconBox.style.width = `${state.icon.size}px`;
+      iconBox.style.height = `${state.icon.size}px`;
+      iconBox.style.fontSize = `${state.icon.size}px`;
       iconBox.style.opacity = String(state.icon.alpha);
-      iconBox.appendChild(el("div", "icon-default", "\u{1F4AC}"));
+      iconBox.appendChild(drawIcon(state.icon.render));
+      if (state.icon.overlayRender && state.icon.overlayRender.kind !== "none") {
+        const badge = el("div", "icon-overlay");
+        badge.appendChild(drawIcon(state.icon.overlayRender));
+        iconBox.appendChild(badge);
+      }
       iconBox.setAttribute("role", "img");
       iconBox.setAttribute("aria-label", state.icon.altText);
       main.appendChild(iconBox);
@@ -1373,13 +1424,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       root.appendChild(wrap);
     }
     const buttons = el("div", "buttons");
+    if (state.buttonStyle === "stack") buttons.classList.add("stack");
+    else if (state.buttonStyle === "center" || state.buttonStyle === "centre")
+      buttons.classList.add("center");
+    buttons.classList.add(`size-${state.buttonSize}`);
+    if (state.buttonTextSize) buttons.style.fontSize = `${state.buttonTextSize}px`;
     if (state.infoText) {
       buttons.appendChild(el("div", "infotext", state.infoText));
     }
     if (state.infoButton.visible) {
-      const info = el("button", "btn info", state.infoButton.text);
-      info.addEventListener("click", () => sendEvent("info"));
-      buttons.appendChild(info);
+      buttons.appendChild(buttonEl("btn info", state.infoButton, () => sendEvent("info")));
     }
     if (state.timer && !state.timer.hideBar) {
       const bar = el("div", "timer-bar");
@@ -1401,20 +1455,23 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       buttons.appendChild(el("div", "spacer"));
     }
     if (state.button2.visible) {
-      const b2 = el("button", "btn", state.button2.text);
-      b2.disabled = !state.button2.enabled;
-      b2.addEventListener("click", () => sendEvent("button2"));
-      buttons.appendChild(b2);
+      buttons.appendChild(buttonEl("btn", state.button2, () => sendEvent("button2")));
     }
-    const b1 = el("button", "btn primary", state.button1.text);
-    b1.disabled = !state.button1.enabled;
-    b1.addEventListener("click", () => void invoke("submit"));
-    buttons.appendChild(b1);
+    buttons.appendChild(buttonEl("btn primary", state.button1, () => void invoke("submit")));
     root.appendChild(buttons);
     const sheet = el("div", "error-sheet");
     sheet.id = "error-sheet";
     root.appendChild(sheet);
-    document.body.replaceChildren(root);
+    if (state.background && state.background.render.kind === "image") {
+      const bg = el("div", "bg-image");
+      bg.style.backgroundImage = `url("${state.background.render.url}")`;
+      bg.style.opacity = String(state.background.alpha);
+      bg.style.backgroundSize = state.background.size;
+      if (state.background.position) bg.style.backgroundPosition = state.background.position;
+      document.body.replaceChildren(bg, root);
+    } else {
+      document.body.replaceChildren(root);
+    }
   }
   function checkboxRow(cb) {
     const row = el("label", "checkbox-row");

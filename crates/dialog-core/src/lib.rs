@@ -8,6 +8,7 @@ pub mod commands;
 pub mod compat;
 pub mod config;
 pub mod exit_codes;
+pub mod icon;
 pub mod options;
 pub mod output;
 pub mod parser;

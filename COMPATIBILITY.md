@@ -55,10 +55,61 @@ documented contract; a script relying on it would be relying on a bug. We
 match the **button1** path exactly (the intended path) and are a strict
 superset elsewhere. Scripts that parse button1 output are unaffected.
 
+### D-3: Icons rendered via bundled Fluent glyphs, not native SF Symbols
+**Upstream:** `--icon SF=<name>` renders the actual Apple SF Symbol natively
+on macOS; builtin `warning`/`caution`/`info` use Apple's symbol imagery.
+
+**Ours:** one cross-platform render path — every `SF=<name>` maps through a
+curated table to a glyph in the bundled, MIT-licensed **Fluent System Icons**
+font (`ui/fonts/`), drawn identically on macOS and Windows. We don't render
+true SF Symbols because doing so needs a native, non-redistributable shim on
+macOS (design Q3); Apple's font isn't licensed for redistribution or for
+Windows. `.fill` selects the filled variant; `colour=`/`palette=` modifiers
+apply as a CSS tint. Builtin `warning`/`caution`/`info` are the Fluent
+warning/info glyphs with approximate tints.
+
+**Rationale / impact:** glyph *shape* differs from SF (a Fluent gear vs an
+Apple gear) but intent is preserved and scripts are unchanged. Future work:
+a native SF-Symbol pass on macOS for fidelity, and per-platform divergence.
+
+**Currently deferred (degrade → default icon + stderr warning):**
+- Native `.app`/`.exe`/`.lnk` application-icon extraction (needs platform FFI).
+- SF override pack (user-supplied `name.svg/png` directory) for unmapped names.
+- Curated SF table covers ~65 common community symbols; unmapped names show a
+  placeholder glyph + warning.
+- `.icns` files (no webview can render them) → default icon + warning.
+
+`--icon https://…` is downloaded at launch (5 s timeout, 20 MB cap) and
+degrades to the default icon on failure. Note: `--checksum <value>` is **not**
+icon verification — it's swiftDialog's SHA256 utility (prints the hash of
+`<value>` and exits 0, for use with `--authkey`), implemented as such.
+
+### D-4: `--windowbuttons` is a flag, not `<min,max,close>`
+Our `window-behavior` spec described `--windowbuttons <min,max,close>` granularity,
+but upstream declares it `isbool: true` (`CommandLineArguments.swift:150`) — a plain
+flag. We match upstream: `--windowbuttons` shows the native title bar (with its close
+control); there is no per-button selection. Closing the window (its close button, the
+OS close, or Cmd+W) exits **15** (live-verified). `--fullscreen` covers the display
+with a dim backdrop and centers the dialog as a card (swiftDialog renders a full-screen
+backdrop); not pixel-identical, but the same intent.
+
+### D-5: `--blurscreen` is a best-effort overlay; `--showonallscreens` dropped
+`--blurscreen` covers the primary display with a transparent, always-on-top
+overlay that dims the desktop and applies a CSS `backdrop-filter` blur. On
+macOS the blur takes effect and the overlay is raised above the menu bar and
+dock (NSWindow level via a small `objc2` call — `main.rs`), so it covers all
+screen chrome. On Windows it degrades to dim, and the **taskbar remains
+visible** (accepted — a topmost window doesn't cover it; borderless-fullscreen
+would but isn't worth the divergence). A warning is logged either way and the
+dialog stays fully interactive (live-verified on both platforms). This avoids a
+native compositor/vibrancy shim (cf. the SF-Symbols decision). True
+multi-display overlays (`--showonallscreens`) are **dropped** — the overlay is
+the primary display only; the flag otherwise warns and no-ops.
+
 ## Known gaps (tracked in tasks.md)
 
-- Icons: `SF=` symbols and app/exe icon extraction not yet implemented
-  (group 5) — placeholder glyph shown.
+- Icons: native app/exe icon extraction and SF override packs deferred
+  (group 5, see D-3) — those sources fall back to the default icon.
 - `--blurscreen`, `--fullscreen` window effects (group 10).
 - Regex validation uses a small anchored-pattern matcher; patterns it can't
   model (alternation, groups) pass rather than block the user.

@@ -36,6 +36,39 @@
         --btn-border: #d0d0d0;
       }
       * { box-sizing: border-box; }
+      /* --fullscreen: dim backdrop fills the display; dialog centered card. */
+      body.fullscreen {
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 50% 35%, #3a3a3e 0%, #1b1b1d 80%);
+      }
+      /* --blurscreen: transparent window + dim (and best-effort blur) overlay
+         so the dimmed desktop shows behind the centered dialog card. */
+      body.blurscreen {
+        background: transparent;
+        display: grid;
+        place-items: center;
+      }
+      body.blurscreen::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      body.fullscreen .dialog,
+      body.blurscreen .dialog {
+        width: 820px;
+        max-width: 92vw;
+        height: auto;
+        max-height: 86vh;
+        background: var(--bg);
+        border-radius: 12px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      }
       html, body {
         margin: 0;
         height: 100%;
@@ -54,12 +87,29 @@
         font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
       }
 
+      /* Bundled Fluent System Icons (MIT) — renders SF=/builtin glyphs the
+         same on macOS and Windows. See ui/fonts/LICENSE-FluentSystemIcons.txt */
+      @font-face {
+        font-family: "FluentSystemIcons";
+        src: url("fonts/FluentSystemIcons-Resizable.woff2") format("woff2");
+        font-display: block;
+      }
+
       .dialog {
         display: flex;
         flex-direction: column;
         height: 100%;
         padding: 16px 20px;
         gap: 8px;
+      }
+      /* --background full-window image behind the (transparent) dialog. */
+      .bg-image {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background-repeat: no-repeat;
+        background-position: center;
+        pointer-events: none;
       }
       .header { text-align: center; }
       .title {
@@ -82,10 +132,51 @@
       }
       .icon {
         flex: none;
+        position: relative;
         display: grid;
         place-items: center;
       }
-      .icon-default { font-size: 96px; line-height: 1; }
+      .icon.centered { margin: 0 auto; }
+      .icon-img { width: 100%; height: 100%; object-fit: contain; }
+      .icon-glyph {
+        font-family: "FluentSystemIcons";
+        font-size: 1em;
+        line-height: 1;
+      }
+      .icon-default { font-size: 0.64em; line-height: 1; }
+      /* Overlay badge over the lower-trailing corner of the main icon. */
+      .icon-overlay {
+        position: absolute;
+        right: -2%;
+        bottom: -2%;
+        width: 42%;
+        height: 42%;
+        font-size: 0.42em;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--bg);
+        box-shadow: 0 0 0 2px var(--bg);
+      }
+      .icon-overlay .icon-img { width: 100%; height: 100%; }
+      /* Top banner image with overlaid title (--bannerimage/--bannertitle). */
+      .banner {
+        flex: none;
+        margin: -16px -20px 0;
+        min-height: 90px;
+        background-size: cover;
+        background-position: center;
+        background-color: var(--accent);
+        display: flex;
+        align-items: flex-end;
+      }
+      .banner-title {
+        color: #fff;
+        font-size: 24px;
+        font-weight: 700;
+        padding: 10px 20px;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      }
       .message {
         flex: 1;
         align-self: stretch;
@@ -114,8 +205,13 @@
       /* --mini: compact 540×128 single-row layout */
       .dialog.mini { padding: 10px 14px; gap: 4px; }
       .dialog.mini .title { font-size: 15px; font-weight: 600; }
-      .dialog.mini .icon-default { font-size: 40px; }
-      .dialog.mini .icon { width: 48px !important; }
+      .dialog.mini .icon {
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 48px !important;
+      }
+      .dialog.mini .banner { min-height: 48px; margin: -10px -14px 0; }
+      .dialog.mini .banner-title { font-size: 16px; padding: 4px 14px; }
       .dialog.mini .message { font-size: 12px; padding-top: 0; }
       .dialog.mini .buttons { padding-top: 4px; }
       .dialog.mini .btn { padding: 2px 12px; min-width: 60px; }
@@ -295,6 +391,10 @@
       .spacer { flex: 1; }
       .btn {
         font: inherit;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
         padding: 4px 18px;
         border-radius: 6px;
         border: 1px solid var(--btn-border);
@@ -311,6 +411,28 @@
       }
       body.platform-windows .btn { border-radius: 4px; }
       .btn.info { min-width: 0; }
+      /* Button symbol (--button*symbol) sized to the label text. */
+      .btn-symbol { font-size: 1.1em; line-height: 1; }
+      .btn-symbol.icon-img { width: 1.1em; height: 1.1em; }
+
+      /* --buttonstyle center / stack */
+      .buttons.center { justify-content: center; }
+      .buttons.center .spacer { display: none; }
+      .buttons.stack {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .buttons.stack .spacer { display: none; }
+      .buttons.stack .btn { width: 100%; }
+      .buttons.stack .btn.primary { order: -1; } /* button1 on top */
+
+      /* --buttonsize mini | small | regular | large (drives font + padding) */
+      .buttons.size-mini { font-size: 11px; }
+      .buttons.size-mini .btn { padding: 1px 10px; min-width: 56px; }
+      .buttons.size-small { font-size: 12px; }
+      .buttons.size-small .btn { padding: 2px 13px; min-width: 64px; }
+      .buttons.size-large { font-size: 15px; }
+      .buttons.size-large .btn { padding: 7px 24px; min-width: 88px; }
     </style>
   </head>
   <body>

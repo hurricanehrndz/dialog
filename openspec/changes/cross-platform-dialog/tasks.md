@@ -27,22 +27,22 @@
 - [x] 4.2 Title/message font options (`name=,size=,weight=,colour=`), alignment and vertical position options
 - [x] 4.3 Default 820×380 window, `--width`/`--height`, size presets `--small`/`--big`/`--mini` and `--style` layouts
 - [x] 4.4 Light/dark appearance: follow OS, `--appearance` override
-- [ ] 4.5 Background image with alpha/position/fill options
+- [x] 4.5 Background image (`--background`) with `--bgalpha`/`--bgposition`/`--bgfill`/`--bgscale` options
 
 ## 5. Icons and branding (icon-branding)
 
-- [ ] 5.1 Icon resolution module: file path, URL download (+ `--checksum` verification), builtin keywords, `--iconsize`, `none` reflow
-- [ ] 5.2 macOS `SF=name` rendering and `.app` icon extraction
-- [ ] 5.3 Windows: SF→Segoe Fluent Icons mapping table (curate top ~200 community-used symbols), `.exe`/`.lnk` icon extraction, override-pack lookup, placeholder fallback
-- [ ] 5.4 Overlay icon, built-in warning/info/caution icons
-- [ ] 5.5 Banner image with `--bannertitle`/`--bannerheight`
+- [x] 5.1 Icon resolution module: file path, URL download, builtin keywords, `--iconsize`, `none` reflow. (`--checksum` corrected: it is swiftDialog's standalone SHA256 utility — print hash of value, exit 0 — not icon-download verification, which upstream does not do; implemented as such.)
+- [x] 5.2 `SF=name` rendering via the bundled Fluent glyph table (one cross-platform path; native macOS SF Symbols + `.app` icon extraction deferred — see COMPATIBILITY D-3)
+- [x] 5.3 SF→Fluent Icons mapping table (curated ~65 common symbols) on both platforms with placeholder fallback for unmapped names. (`.exe`/`.lnk` extraction + override-pack lookup deferred — COMPATIBILITY D-3)
+- [x] 5.4 Overlay icon, built-in warning/info/caution icons
+- [x] 5.5 Banner image with `--bannertitle`/`--bannerheight`
 
 ## 6. Buttons and lifecycle (buttons-actions)
 
 - [x] 6.1 Button 1/2/info rendering, default labels (OK/Cancel), enable/disable, actions (open URL), exit-code wiring
 - [x] 6.2 Keyboard handling: Return = button1, Escape = button2, quitkey (Cmd/Ctrl+char) → exit 10
 - [x] 6.3 Timer with countdown bar, default 10 s, `--hidetimerbar`, exit 4
-- [ ] 6.4 Button styles (`stack`/`center`), sizes, button symbols via icon pipeline
+- [x] 6.4 Button styles (`stack`/`center`), sizes (`mini`/`small`/`regular`/`large`), `--buttontextsize`, and button symbols (`--button{1,2,info}symbol`) via the icon pipeline
 
 ## 7. User input (user-input)
 
@@ -69,9 +69,9 @@
 
 ## 10. Window behavior (window-behavior)
 
-- [ ] 10.1 Positioning (9 anchors + offset), ontop, moveable, resizable, windowbuttons (+ close → exit 15)
-- [ ] 10.2 Fullscreen backdrop mode
-- [ ] 10.3 Blur/dim overlay: macOS blur, Windows best-effort (dim fallback + warning), `--showonallscreens` multi-display overlays
+- [x] 10.1 Positioning (9 anchors + offset), ontop, moveable, resizable, windowbuttons (+ close → exit 15). (`--windowbuttons` is all-or-nothing per upstream `isbool: true`; the spec's `<min,max,close>` granularity does not exist in swiftDialog — see COMPATIBILITY D-4.)
+- [x] 10.2 Fullscreen backdrop mode (window covers the display; dialog centered as a card on a dim backdrop)
+- [x] 10.3 Blur/dim overlay via a transparent full-screen overlay (CSS dim + best-effort blur; macOS blurs, Windows degrades to dim) + stderr warning. `--showonallscreens` multi-display is **dropped** (primary display only) — see COMPATIBILITY D-5.
 
 ## 11. Compatibility verification
 

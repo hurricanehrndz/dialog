@@ -3,6 +3,7 @@
 //! contract logic stays on the Rust side. Serialized as camelCase JSON.
 
 use crate::config::Config;
+use crate::icon::IconRender;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -32,19 +33,57 @@ pub struct ButtonState {
     pub visible: bool,
     pub enabled: bool,
     pub action: Option<String>,
+    /// `--button{1,2,info}symbol`: an SF symbol rendered on the button,
+    /// resolved through the icon pipeline (None when not given).
+    pub symbol: Option<IconRender>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct IconState {
-    /// Raw `--icon` value; resolution to a concrete image happens in the
-    /// icon pipeline (icon-branding capability).
+    /// Raw `--icon` value; the icon pipeline resolves it into `render`.
     pub source: String,
     pub size: f64,
     pub alpha: f64,
     pub alt_text: String,
+    /// `--centreicon`: centre the icon in the window instead of left-aligning.
+    pub centered: bool,
+    /// Raw `--overlayicon` value (resolved into `overlay_render`).
     pub overlay: Option<String>,
     pub hidden: bool,
+    /// Resolved main icon (filled in by `icon::resolve_*`). Defaults to the
+    /// placeholder until the app resolves it (keeps `from_config` I/O-free).
+    pub render: IconRender,
+    /// Resolved overlay badge, if `--overlayicon` was given.
+    pub overlay_render: Option<IconRender>,
+}
+
+/// Full-window background image (`--background`) behind dialog content.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundState {
+    /// Raw `--background` value (resolved into `render`).
+    pub source: String,
+    pub render: IconRender,
+    /// `--bgalpha` opacity (default 1.0).
+    pub alpha: f64,
+    /// `--bgposition` CSS background-position; None = center.
+    pub position: Option<String>,
+    /// CSS background-size derived from `--bgfill`/`--bgscale`.
+    pub size: String,
+}
+
+/// Top banner image (`--bannerimage`) with optional overlaid title.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BannerState {
+    /// Raw `--bannerimage` value (resolved into `render`).
+    pub source: String,
+    pub render: IconRender,
+    /// `--bannertitle`/`--bannertext`; None falls back to the dialog title.
+    pub title: Option<String>,
+    /// `--bannerheight` override; None uses the renderer default.
+    pub height: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -107,6 +146,14 @@ pub struct WindowState {
     pub ontop: bool,
     pub moveable: bool,
     pub resizable: bool,
+    /// `--windowbuttons`: show the native title bar / close control. Closing
+    /// via it exits 15 (window-behavior spec).
+    pub window_buttons: bool,
+    /// `--fullscreen`: cover the primary display with a backdrop, content centered.
+    pub fullscreen: bool,
+    /// `--blurscreen`: cover the primary display with a transparent dim overlay
+    /// (compositor blur degrades to dim — see COMPATIBILITY D-5).
+    pub blur: bool,
     /// "light" | "dark" | None (follow OS).
     pub appearance: Option<String>,
 }
@@ -169,6 +216,10 @@ pub struct DialogState {
     pub title_font: Option<String>,
     pub message_font: Option<String>,
     pub icon: IconState,
+    /// Full-window background image (`--background`).
+    pub background: Option<BackgroundState>,
+    /// Top banner image + title (`--bannerimage`/`--bannertitle`).
+    pub banner: Option<BannerState>,
     pub button1: ButtonState,
     pub button2: ButtonState,
     pub info_button: ButtonState,
@@ -190,10 +241,70 @@ pub struct DialogState {
     pub style: Option<String>,
     /// Quit key character (Cmd/Ctrl+<key> exits 10). Default "q".
     pub quit_key: String,
+    /// `--buttonstyle` (`center`/`centre`/`stack`); None = default right-aligned.
+    pub button_style: Option<String>,
+    /// `--buttonsize` (`mini`/`small`/`regular`/`large`).
+    pub button_size: String,
+    /// `--buttontextsize` explicit point size; None = theme default.
+    pub button_text_size: Option<f64>,
 }
 
 fn opt_value(config: &Config, name: &str) -> Option<String> {
     config.value(name).map(|v| v.into_owned())
+}
+
+/// Effective `--icon` source: an explicit `--icon` wins; otherwise the
+/// `--warningicon`/`--cautionicon`/`--infoicon` flags select a builtin;
+/// otherwise `default` (icon-branding spec).
+fn icon_source(config: &Config) -> String {
+    if config.present("icon") {
+        return opt_value(config, "icon").unwrap_or_else(|| "default".into());
+    }
+    for (flag, keyword) in [
+        ("warningicon", "warning"),
+        ("cautionicon", "caution"),
+        ("infoicon", "info"),
+    ] {
+        if config.present(flag) {
+            return keyword.to_string();
+        }
+    }
+    "default".into()
+}
+
+/// Map `--bgfill`/`--bgscale` onto a CSS background-size (swiftDialog's
+/// SwiftUI content modes; default fills while preserving aspect).
+fn bg_size(config: &Config) -> String {
+    let mode = config
+        .value("bgfill")
+        .or_else(|| config.value("bgscale"))
+        .map(|v| v.to_lowercase());
+    match mode.as_deref() {
+        Some("fit" | "scaletofit" | "aspectfit" | "contain") => "contain",
+        Some("stretch" | "resize" | "scaletofill") => "100% 100%",
+        // fill / aspectfill / cover / unset → fill while preserving aspect
+        _ => "cover",
+    }
+    .to_string()
+}
+
+/// Resolve a `--button*symbol` option into a renderable glyph (pure — button
+/// symbols are SF symbols).
+fn button_symbol(config: &Config, name: &str) -> Option<IconRender> {
+    config
+        .value(name)
+        .and_then(|v| crate::icon::resolve_symbol(&v))
+}
+
+/// `--bannertitle`/`--bannertext` text, ignoring the `default-title`
+/// localization sentinel (None lets the renderer fall back to the title).
+fn banner_title(config: &Config) -> Option<String> {
+    ["bannertitle", "bannertext"]
+        .iter()
+        .find_map(|k| match config.value(k).as_deref() {
+            Some("default-title") | Some("") | None => None,
+            Some(t) => Some(t.to_string()),
+        })
 }
 
 /// Textfields from repeated `--textfield` specs and/or the JSON array.
@@ -475,6 +586,24 @@ impl DialogState {
             hide_bar: config.present("hidetimerbar"),
         });
 
+        let icon_src = icon_source(config);
+        let icon_hidden = config.present("hideicon") || icon_src == "none";
+        let background = config.present("background").then(|| BackgroundState {
+            source: opt_value(config, "background").unwrap_or_default(),
+            // Resolved by the app before the window shows (keeps this I/O-free).
+            render: IconRender::Placeholder,
+            alpha: parse_f64(config, "bgalpha", 1.0),
+            position: opt_value(config, "bgposition"),
+            size: bg_size(config),
+        });
+        let banner = config.present("bannerimage").then(|| BannerState {
+            source: opt_value(config, "bannerimage").unwrap_or_default(),
+            // Resolved by the app before the window shows (keeps this I/O-free).
+            render: IconRender::Placeholder,
+            title: banner_title(config),
+            height: config.value("bannerheight").and_then(|v| v.parse().ok()),
+        });
+
         DialogState {
             platform: match crate::compat::Platform::current() {
                 crate::compat::Platform::MacOs => "macos",
@@ -499,20 +628,22 @@ impl DialogState {
             message_position: opt_value(config, "messageposition"),
             title_font: opt_value(config, "titlefont"),
             message_font: opt_value(config, "messagefont"),
+            background,
             icon: IconState {
-                source: config
-                    .value("icon")
-                    .map(|v| v.into_owned())
-                    .unwrap_or_else(|| "default".into()),
+                source: icon_src,
                 size: parse_f64(config, "iconsize", 150.0),
                 alpha: parse_f64(config, "iconalpha", 1.0),
                 alt_text: config
                     .value("iconalttext")
                     .map(|v| v.into_owned())
                     .unwrap_or_else(|| "Dialog Icon".into()),
+                centered: config.present("centreicon"),
                 overlay: opt_value(config, "overlayicon"),
-                hidden: config.present("hideicon"),
+                hidden: icon_hidden,
+                render: IconRender::Placeholder,
+                overlay_render: None,
             },
+            banner,
             button1: ButtonState {
                 text: config
                     .value("button1text")
@@ -521,6 +652,7 @@ impl DialogState {
                 visible: true,
                 enabled: !config.present("button1disabled"),
                 action: opt_value(config, "button1action"),
+                symbol: button_symbol(config, "button1symbol"),
             },
             button2: ButtonState {
                 text: config
@@ -530,6 +662,7 @@ impl DialogState {
                 visible: button2_visible,
                 enabled: !config.present("button2disabled"),
                 action: opt_value(config, "button2action"),
+                symbol: button_symbol(config, "button2symbol"),
             },
             info_button: ButtonState {
                 text: config
@@ -539,6 +672,7 @@ impl DialogState {
                 visible: info_visible,
                 enabled: true,
                 action: opt_value(config, "infobuttonaction"),
+                symbol: button_symbol(config, "infobuttonsymbol"),
             },
             timer,
             list_items: parse_list_items(config),
@@ -574,6 +708,12 @@ impl DialogState {
                 .value("quitkey")
                 .map(|v| v.into_owned())
                 .unwrap_or_else(|| "q".into()),
+            button_style: opt_value(config, "buttonstyle"),
+            button_size: config
+                .value("buttonsize")
+                .map(|v| v.into_owned())
+                .unwrap_or_else(|| "regular".into()),
+            button_text_size: config.value("buttontextsize").and_then(|v| v.parse().ok()),
             window: WindowState {
                 width,
                 height,
@@ -582,6 +722,9 @@ impl DialogState {
                 ontop: config.present("ontop"),
                 moveable: config.present("moveable"),
                 resizable: config.present("resizable"),
+                window_buttons: config.present("windowbuttons"),
+                fullscreen: config.present("fullscreen"),
+                blur: config.present("blurscreen"),
                 appearance: opt_value(config, "appearance"),
             },
         }
@@ -673,6 +816,65 @@ mod tests {
             assert!(s.mini);
             assert_eq!((s.window.width, s.window.height), (540.0, 128.0));
         }
+    }
+
+    #[test]
+    fn button_symbol_and_styles() {
+        let s = state(&[
+            "--button1symbol",
+            "checkmark.circle",
+            "--buttonstyle",
+            "stack",
+            "--buttonsize",
+            "large",
+            "--buttontextsize",
+            "16",
+        ]);
+        assert!(matches!(
+            s.button1.symbol,
+            Some(crate::icon::IconRender::Glyph { .. })
+        ));
+        assert_eq!(s.button_style.as_deref(), Some("stack"));
+        assert_eq!(s.button_size, "large");
+        assert_eq!(s.button_text_size, Some(16.0));
+        // defaults when unspecified
+        let d = state(&["--message", "x"]);
+        assert!(d.button1.symbol.is_none());
+        assert_eq!(d.button_size, "regular");
+        assert_eq!(d.button_style, None);
+    }
+
+    #[test]
+    fn window_chrome_flags() {
+        let s = state(&["--windowbuttons", "--fullscreen", "--blurscreen"]);
+        assert!(s.window.window_buttons);
+        assert!(s.window.fullscreen);
+        assert!(s.window.blur);
+        let d = state(&["--message", "x"]);
+        assert!(!d.window.window_buttons);
+        assert!(!d.window.fullscreen);
+        assert!(!d.window.blur);
+    }
+
+    #[test]
+    fn background_image_options() {
+        let s = state(&[
+            "--background",
+            "/tmp/wall.png",
+            "--bgalpha",
+            "0.5",
+            "--bgposition",
+            "top",
+            "--bgscale",
+            "fit",
+        ]);
+        let bg = s.background.expect("background present");
+        assert_eq!(bg.source, "/tmp/wall.png");
+        assert_eq!(bg.alpha, 0.5);
+        assert_eq!(bg.position.as_deref(), Some("top"));
+        assert_eq!(bg.size, "contain");
+        // absent by default
+        assert!(state(&["--message", "x"]).background.is_none());
     }
 
     #[test]

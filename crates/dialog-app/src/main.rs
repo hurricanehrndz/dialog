@@ -5,7 +5,7 @@ use dialog_core::{
     commands::{self, Command},
     compat,
     config::Config,
-    exit_codes,
+    exit_codes, icon,
     output::{SelectResult, UserInput},
     parser,
     state::DialogState,
@@ -45,14 +45,44 @@ fn implemented() -> HashSet<&'static str> {
         "infobuttontext",
         "infobuttonaction",
         "quitoninfo",
+        "button1symbol",
+        "button2symbol",
+        "infobuttonsymbol",
+        "buttonstyle",
+        "buttonsize",
+        "buttontextsize",
         "timer",
         "hidetimerbar",
+        // icon-branding
+        "icon",
+        "iconsize",
+        "iconalpha",
+        "iconalttext",
+        "centreicon",
+        "centericon",
+        "overlayicon",
+        "warningicon",
+        "cautionicon",
+        "infoicon",
+        "bannerimage",
+        "bannertitle",
+        "bannertext",
+        "bannerheight",
+        "checksum",
+        "background",
+        "bgalpha",
+        "bgposition",
+        "bgfill",
+        "bgscale",
         // window-behavior basics
         "width",
         "height",
         "ontop",
         "moveable",
         "resizable",
+        "windowbuttons",
+        "fullscreen",
+        "blurscreen",
         "appearance",
         "hideicon",
         // dialog-core layout & text
@@ -332,6 +362,23 @@ fn handle_shell_command(handle: &tauri::AppHandle, cmd: &Command) {
     }
 }
 
+/// Lift the transparent `--blurscreen` overlay above the macOS menu bar
+/// (level 24) and dock (20) so it covers all screen chrome — Tauri's
+/// always-on-top only reaches the floating level, which sits below them.
+#[cfg(target_os = "macos")]
+fn raise_overlay_above_chrome(window: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    // NSScreenSaverWindowLevel — above menu bar, dock, and status items.
+    const NS_SCREEN_SAVER_WINDOW_LEVEL: isize = 1000;
+    if let Ok(ptr) = window.ns_window() {
+        let ns_window = ptr as *mut AnyObject;
+        unsafe {
+            let _: () = msg_send![ns_window, setLevel: NS_SCREEN_SAVER_WINDOW_LEVEL];
+        }
+    }
+}
+
 /// Place the window at one of swiftDialog's nine screen anchors.
 fn position_window(window: &tauri::WebviewWindow, anchor: &str, offset: f64) {
     let Ok(Some(monitor)) = window.current_monitor() else {
@@ -380,6 +427,13 @@ fn main() {
         print!("{}", help_text());
         std::process::exit(0);
     }
+    // `--checksum <value>`: swiftDialog's hash utility — print SHA256(value)
+    // and exit 0 (for use with --authkey). Unrelated to icon downloads.
+    if let Some(value) = args.value("checksum") {
+        use sha2::{Digest, Sha256};
+        println!("{:x}", Sha256::digest(value.as_bytes()));
+        std::process::exit(0);
+    }
 
     if args.present("verbose") {
         for token in &args.ignored {
@@ -401,12 +455,24 @@ fn main() {
         eprintln!("{warning}");
     }
 
+    // --blurscreen uses a best-effort overlay (CSS dim + blur where the
+    // webview supports it) rather than native compositor blur; the
+    // multi-display --showonallscreens overlay is dropped (primary only).
+    if config.present("blurscreen") {
+        eprintln!(
+            "WARNING: --blurscreen uses a best-effort dim/blur overlay (no native compositor blur)"
+        );
+    }
+
     let command_file_path = config
         .value("commandfile")
         .map(|v| std::path::PathBuf::from(v.into_owned()))
         .unwrap_or_else(default_path);
 
-    let state = DialogState::from_config(&config);
+    let mut state = DialogState::from_config(&config);
+    // Resolve icon/overlay/banner sources to renderable images/glyphs before
+    // the window shows (file reads + any `--icon https://` download).
+    icon::resolve_initial(&mut state);
     let app = App {
         json_output: config.present("json"),
         quit_on_info: config.present("quitoninfo"),
@@ -435,12 +501,17 @@ fn main() {
             let w = &state.window;
             // swiftDialog windows are chromeless (no title bar); dragging
             // is offered only with --moveable via a webview drag region.
+            // Chromeless by default; --windowbuttons shows the native title
+            // bar (and its close button → exit 15 via the event below).
             let mut builder = WebviewWindowBuilder::new(tauri_app, "main", WebviewUrl::default())
                 .title("dialog")
                 .inner_size(w.width, w.height)
                 .resizable(w.resizable)
-                .always_on_top(w.ontop)
-                .decorations(false)
+                // --blurscreen overlays the whole display and stays on top.
+                .always_on_top(w.ontop || w.blur)
+                .decorations(w.window_buttons)
+                .fullscreen(w.fullscreen)
+                .transparent(w.blur)
                 .center();
             if let Some(appearance) = &w.appearance {
                 builder = builder.theme(match appearance.as_str() {
@@ -452,6 +523,32 @@ fn main() {
             let window = builder.build()?;
             if let Some(anchor) = &w.position {
                 position_window(&window, anchor, w.position_offset);
+            }
+            // --blurscreen: a native fullscreen Space would hide the desktop,
+            // so cover the current monitor with a transparent ontop overlay
+            // instead — the renderer dims it (compositor blur → dim degrade).
+            if w.blur {
+                if let Ok(Some(monitor)) = window.current_monitor() {
+                    let pos = monitor.position();
+                    let size = monitor.size();
+                    let _ = window.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+                    let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                }
+                // Cover the menu bar / dock (macOS); on Windows a topmost
+                // full-monitor window already covers the taskbar.
+                #[cfg(target_os = "macos")]
+                raise_overlay_above_chrome(&window);
+            }
+
+            // Closing the window (close button or OS close) exits 15.
+            {
+                let close_handle = tauri_app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        let app = close_handle.state::<App>();
+                        quit(&app, exit_codes::WINDOW_CLOSE);
+                    }
+                });
             }
 
             // Rust-authoritative timer: the frontend bar is cosmetic; the
@@ -494,6 +591,13 @@ fn main() {
                             commands::apply(&mut dialog, &cmd)
                         };
                         if content_handled {
+                            // An `icon:` swap changes the source — re-resolve
+                            // it (outside the lock; it may read a file/URL).
+                            if matches!(cmd, Command::Icon(_)) {
+                                let src = app.dialog.lock().unwrap().icon.source.clone();
+                                let render = icon::resolve(&src);
+                                app.dialog.lock().unwrap().icon.render = render;
+                            }
                             let snapshot = app.dialog.lock().unwrap().clone();
                             let _ = handle.emit("state", snapshot);
                         } else {
