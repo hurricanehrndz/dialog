@@ -306,78 +306,82 @@ function render(state: DialogState) {
   document.body.replaceChildren(root);
 }
 
+function checkboxRow(cb: Checkbox): HTMLElement {
+  const row = el("label", "checkbox-row");
+  const input = el("input") as HTMLInputElement;
+  input.type = "checkbox";
+  input.checked = cb.checked;
+  input.disabled = cb.disabled;
+  if (cb.style === "switch") input.classList.add("switch");
+  input.addEventListener("change", () =>
+    invoke("set_checkbox", { name: cb.name, checked: input.checked }),
+  );
+  row.appendChild(input);
+  row.appendChild(el("span", "checkbox-label", cb.label));
+  return row;
+}
+
+function textFieldRow(tf: TextField): HTMLElement {
+  const row = el("div", "input-row");
+  row.appendChild(el("label", "input-label", tf.title));
+  const input = el("input", "input-control") as HTMLInputElement;
+  input.type = tf.secure ? "password" : "text";
+  input.value = tf.value;
+  if (tf.prompt) input.placeholder = tf.prompt;
+  input.addEventListener("input", () =>
+    invoke("set_field", { name: tf.name, value: input.value }),
+  );
+  row.appendChild(input);
+  return row;
+}
+
+function selectRow(sel: Select): HTMLElement {
+  const row = el("div", "input-row");
+  row.appendChild(el("label", "input-label", sel.title));
+  if (sel.style === "radio") {
+    const group = el("div", "radio-group");
+    for (const v of sel.values) {
+      const opt = el("label", "radio-opt");
+      const radio = el("input") as HTMLInputElement;
+      radio.type = "radio";
+      radio.name = `sel-${sel.name}`;
+      radio.checked = v === sel.selected;
+      radio.addEventListener("change", () =>
+        invoke("set_select", { name: sel.name, value: v }),
+      );
+      opt.appendChild(radio);
+      opt.appendChild(document.createTextNode(v));
+      group.appendChild(opt);
+    }
+    row.appendChild(group);
+  } else {
+    const dropdown = el("select", "input-control") as HTMLSelectElement;
+    if (!sel.selected) {
+      const placeholder = el("option", undefined, "") as HTMLOptionElement;
+      placeholder.value = "";
+      dropdown.appendChild(placeholder);
+    }
+    for (const v of sel.values) {
+      const opt = el("option", undefined, v) as HTMLOptionElement;
+      opt.value = v;
+      opt.selected = v === sel.selected;
+      dropdown.appendChild(opt);
+    }
+    dropdown.addEventListener("change", () =>
+      invoke("set_select", { name: sel.name, value: dropdown.value }),
+    );
+    row.appendChild(dropdown);
+  }
+  return row;
+}
+
 function renderInputs(state: DialogState): HTMLElement {
   const box = el("div", "inputs");
-
-  for (const sel of state.selects) {
-    const row = el("div", "input-row");
-    row.appendChild(el("label", "input-label", sel.title));
-    if (sel.style === "radio") {
-      const group = el("div", "radio-group");
-      for (const v of sel.values) {
-        const opt = el("label", "radio-opt");
-        const radio = el("input") as HTMLInputElement;
-        radio.type = "radio";
-        radio.name = `sel-${sel.name}`;
-        radio.checked = v === sel.selected;
-        radio.addEventListener("change", () =>
-          invoke("set_select", { name: sel.name, value: v }),
-        );
-        opt.appendChild(radio);
-        opt.appendChild(document.createTextNode(v));
-        group.appendChild(opt);
-      }
-      row.appendChild(group);
-    } else {
-      const dropdown = el("select", "input-control") as HTMLSelectElement;
-      if (!sel.selected) {
-        const placeholder = el("option", undefined, "") as HTMLOptionElement;
-        placeholder.value = "";
-        dropdown.appendChild(placeholder);
-      }
-      for (const v of sel.values) {
-        const opt = el("option", undefined, v) as HTMLOptionElement;
-        opt.value = v;
-        opt.selected = v === sel.selected;
-        dropdown.appendChild(opt);
-      }
-      dropdown.addEventListener("change", () =>
-        invoke("set_select", { name: sel.name, value: dropdown.value }),
-      );
-      row.appendChild(dropdown);
-    }
-    box.appendChild(row);
-  }
-
-  for (const tf of state.textFields) {
-    const row = el("div", "input-row");
-    row.appendChild(el("label", "input-label", tf.title));
-    const input = el("input", "input-control") as HTMLInputElement;
-    input.type = tf.secure ? "password" : "text";
-    input.value = tf.value;
-    if (tf.prompt) input.placeholder = tf.prompt;
-    input.addEventListener("input", () =>
-      invoke("set_field", { name: tf.name, value: input.value }),
-    );
-    row.appendChild(input);
-    box.appendChild(row);
-  }
-
-  for (const cb of state.checkboxes) {
-    const row = el("label", "checkbox-row");
-    const input = el("input") as HTMLInputElement;
-    input.type = "checkbox";
-    input.checked = cb.checked;
-    input.disabled = cb.disabled;
-    if (cb.style === "switch") input.classList.add("switch");
-    input.addEventListener("change", () =>
-      invoke("set_checkbox", { name: cb.name, checked: input.checked }),
-    );
-    row.appendChild(input);
-    row.appendChild(el("span", "checkbox-label", cb.label));
-    box.appendChild(row);
-  }
-
+  // Upstream element order: checkboxes, then textfields, then selects
+  // (verified vs swiftDialog 3.0.1 form layout).
+  state.checkboxes.forEach((cb) => box.appendChild(checkboxRow(cb)));
+  state.textFields.forEach((tf) => box.appendChild(textFieldRow(tf)));
+  state.selects.forEach((sel) => box.appendChild(selectRow(sel)));
   return box;
 }
 

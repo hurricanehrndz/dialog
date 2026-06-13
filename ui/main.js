@@ -1416,78 +1416,81 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     root.appendChild(sheet);
     document.body.replaceChildren(root);
   }
+  function checkboxRow(cb) {
+    const row = el("label", "checkbox-row");
+    const input = el("input");
+    input.type = "checkbox";
+    input.checked = cb.checked;
+    input.disabled = cb.disabled;
+    if (cb.style === "switch") input.classList.add("switch");
+    input.addEventListener(
+      "change",
+      () => invoke("set_checkbox", { name: cb.name, checked: input.checked })
+    );
+    row.appendChild(input);
+    row.appendChild(el("span", "checkbox-label", cb.label));
+    return row;
+  }
+  function textFieldRow(tf) {
+    const row = el("div", "input-row");
+    row.appendChild(el("label", "input-label", tf.title));
+    const input = el("input", "input-control");
+    input.type = tf.secure ? "password" : "text";
+    input.value = tf.value;
+    if (tf.prompt) input.placeholder = tf.prompt;
+    input.addEventListener(
+      "input",
+      () => invoke("set_field", { name: tf.name, value: input.value })
+    );
+    row.appendChild(input);
+    return row;
+  }
+  function selectRow(sel) {
+    const row = el("div", "input-row");
+    row.appendChild(el("label", "input-label", sel.title));
+    if (sel.style === "radio") {
+      const group = el("div", "radio-group");
+      for (const v2 of sel.values) {
+        const opt = el("label", "radio-opt");
+        const radio = el("input");
+        radio.type = "radio";
+        radio.name = `sel-${sel.name}`;
+        radio.checked = v2 === sel.selected;
+        radio.addEventListener(
+          "change",
+          () => invoke("set_select", { name: sel.name, value: v2 })
+        );
+        opt.appendChild(radio);
+        opt.appendChild(document.createTextNode(v2));
+        group.appendChild(opt);
+      }
+      row.appendChild(group);
+    } else {
+      const dropdown = el("select", "input-control");
+      if (!sel.selected) {
+        const placeholder = el("option", void 0, "");
+        placeholder.value = "";
+        dropdown.appendChild(placeholder);
+      }
+      for (const v2 of sel.values) {
+        const opt = el("option", void 0, v2);
+        opt.value = v2;
+        opt.selected = v2 === sel.selected;
+        dropdown.appendChild(opt);
+      }
+      dropdown.addEventListener(
+        "change",
+        () => invoke("set_select", { name: sel.name, value: dropdown.value })
+      );
+      row.appendChild(dropdown);
+    }
+    return row;
+  }
   function renderInputs(state) {
     const box = el("div", "inputs");
-    for (const sel of state.selects) {
-      const row = el("div", "input-row");
-      row.appendChild(el("label", "input-label", sel.title));
-      if (sel.style === "radio") {
-        const group = el("div", "radio-group");
-        for (const v2 of sel.values) {
-          const opt = el("label", "radio-opt");
-          const radio = el("input");
-          radio.type = "radio";
-          radio.name = `sel-${sel.name}`;
-          radio.checked = v2 === sel.selected;
-          radio.addEventListener(
-            "change",
-            () => invoke("set_select", { name: sel.name, value: v2 })
-          );
-          opt.appendChild(radio);
-          opt.appendChild(document.createTextNode(v2));
-          group.appendChild(opt);
-        }
-        row.appendChild(group);
-      } else {
-        const dropdown = el("select", "input-control");
-        if (!sel.selected) {
-          const placeholder = el("option", void 0, "");
-          placeholder.value = "";
-          dropdown.appendChild(placeholder);
-        }
-        for (const v2 of sel.values) {
-          const opt = el("option", void 0, v2);
-          opt.value = v2;
-          opt.selected = v2 === sel.selected;
-          dropdown.appendChild(opt);
-        }
-        dropdown.addEventListener(
-          "change",
-          () => invoke("set_select", { name: sel.name, value: dropdown.value })
-        );
-        row.appendChild(dropdown);
-      }
-      box.appendChild(row);
-    }
-    for (const tf of state.textFields) {
-      const row = el("div", "input-row");
-      row.appendChild(el("label", "input-label", tf.title));
-      const input = el("input", "input-control");
-      input.type = tf.secure ? "password" : "text";
-      input.value = tf.value;
-      if (tf.prompt) input.placeholder = tf.prompt;
-      input.addEventListener(
-        "input",
-        () => invoke("set_field", { name: tf.name, value: input.value })
-      );
-      row.appendChild(input);
-      box.appendChild(row);
-    }
-    for (const cb of state.checkboxes) {
-      const row = el("label", "checkbox-row");
-      const input = el("input");
-      input.type = "checkbox";
-      input.checked = cb.checked;
-      input.disabled = cb.disabled;
-      if (cb.style === "switch") input.classList.add("switch");
-      input.addEventListener(
-        "change",
-        () => invoke("set_checkbox", { name: cb.name, checked: input.checked })
-      );
-      row.appendChild(input);
-      row.appendChild(el("span", "checkbox-label", cb.label));
-      box.appendChild(row);
-    }
+    state.checkboxes.forEach((cb) => box.appendChild(checkboxRow(cb)));
+    state.textFields.forEach((tf) => box.appendChild(textFieldRow(tf)));
+    state.selects.forEach((sel) => box.appendChild(selectRow(sel)));
     return box;
   }
   function showValidationErrors(messages) {
