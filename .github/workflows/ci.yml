@@ -55,3 +55,79 @@ jobs:
           $out = & target/release/dialog.exe --version | Out-String
           if (-not $out.Trim()) { throw "no stdout captured from GUI-subsystem binary" }
           Write-Host "captured: $($out.Trim())"
+
+  drift-vs-swiftdialog:
+    name: Contract drift vs swiftDialog (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p dialog-app
+      - name: Install swiftDialog v3.0.1 (reference contract)
+        run: |
+          set -euo pipefail
+          url=$(curl -fsSL https://api.github.com/repos/swiftDialog/swiftDialog/releases/tags/v3.0.1 \
+            | grep -o 'https://[^"]*\.pkg' | head -1)
+          echo "pkg: $url"
+          curl -fsSL -o /tmp/swiftdialog.pkg "$url"
+          sudo installer -pkg /tmp/swiftdialog.pkg -target /
+          /usr/local/bin/dialog --version
+      - name: Compare headless contract surfaces (drift = fail)
+        # Rendered dialogs need GUI interaction (done on the rig); CI compares
+        # the deterministic surfaces — the --checksum SHA256 utility and the
+        # JSON/error exit codes — byte-for-byte against real swiftDialog.
+        run: |
+          set -euo pipefail
+          OURS=target/release/dialog
+          REF=/usr/local/bin/dialog
+          for v in password swiftDialog "hello world"; do
+            a=$("$OURS" --checksum "$v"); b=$("$REF" --checksum "$v")
+            [ "$a" = "$b" ] || { echo "checksum drift for '$v': ours=$a ref=$b"; exit 1; }
+          done
+          set +e; "$OURS" --jsonfile /nope.json >/dev/null 2>&1; o=$?
+          "$REF" --jsonfile /nope.json >/dev/null 2>&1; r=$?; set -e
+          [ "$o" = "$r" ] || { echo "jsonfile exit drift: ours=$o ref=$r"; exit 1; }
+          echo "no drift on compared surfaces (checksum, exit $o)"
+
+  coldstart-bench:
+    name: Cold-start benchmark
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p dialog-app
+      - name: Measure time-to-first-render (DIALOG_BENCH)
+        # The app prints BENCH_MS = process-start → frontend's first get_state
+        # (≈ window visible) then exits. Target is <500 ms on reference
+        # hardware; CI runners are slower/variable, so this guards against
+        # gross regressions and logs the number for tracking.
+        shell: bash
+        env:
+          DIALOG_BENCH: "1"
+        run: |
+          set -euo pipefail
+          bin=target/release/dialog
+          [ "${{ runner.os }}" = "Windows" ] && bin=target/release/dialog.exe
+          measure() {
+            "$bin" --title bench --message x >/tmp/bench.out 2>&1 &
+            local pid=$! i
+            for i in $(seq 1 20); do grep -q BENCH_MS /tmp/bench.out && break; sleep 0.5; done
+            kill "$pid" 2>/dev/null || true
+            sed -n 's/.*BENCH_MS=\([0-9]*\).*/\1/p' /tmp/bench.out | head -1
+          }
+          measure >/dev/null || true   # warm caches
+          best=999999
+          for i in 1 2 3; do
+            ms=$(measure)
+            echo "run $i: ${ms:-?}ms"
+            if [ -n "$ms" ] && [ "$ms" -lt "$best" ]; then best=$ms; fi
+          done
+          echo "best: ${best}ms (target <500ms on reference hardware)"
+          if [ "$best" -eq 999999 ]; then echo "no measurement captured"; exit 1; fi
+          if [ "$best" -gt 2000 ]; then echo "cold start regressed: ${best}ms"; exit 1; fi

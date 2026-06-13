@@ -6,7 +6,7 @@ use dialog_core::{
     compat,
     config::Config,
     exit_codes, icon,
-    output::{SelectResult, UserInput},
+    output::UserInput,
     parser,
     state::DialogState,
     validation::{validate, Submission},
@@ -158,58 +158,24 @@ fn help_text() -> String {
 /// Shared app state for command handlers.
 struct App {
     dialog: Mutex<DialogState>,
-    /// Collected user input, printed on exit per the output contract.
-    input: Mutex<UserInput>,
     json_output: bool,
     quit_on_info: bool,
     always_return_input: bool,
+    /// Process start, for the cold-start benchmark (task 11.5).
+    start: std::time::Instant,
+    /// `DIALOG_BENCH=1`: print elapsed-to-first-render and exit (CI bench).
+    bench: bool,
 }
 
 /// Print collected output (if any) and exit with the given contract code.
 /// Input values are emitted on button1 (code 0) always, and on other exit
 /// paths only under `--alwaysreturninput` (user-input spec).
 fn quit(app: &App, code: i32) -> ! {
-    {
+    let emit_inputs = code == exit_codes::BUTTON1 || app.always_return_input;
+    let input = {
         let dialog = app.dialog.lock().unwrap();
-        let mut input = app.input.lock().unwrap();
-        if dialog.list_select_enabled {
-            input.list_selections = dialog
-                .list_items
-                .iter()
-                .map(|i| (i.title.clone(), i.selected))
-                .collect();
-        }
-        if code == exit_codes::BUTTON1 || app.always_return_input {
-            input.textfields = dialog
-                .text_fields
-                .iter()
-                .map(|f| (f.name.clone(), f.value.clone()))
-                .collect();
-            input.checkboxes = dialog
-                .checkboxes
-                .iter()
-                .map(|c| (c.name.clone(), c.checked))
-                .collect();
-            input.selects = dialog
-                .selects
-                .iter()
-                .map(|s| {
-                    let idx = s
-                        .values
-                        .iter()
-                        .position(|v| v == &s.selected)
-                        .map(|i| i as i64)
-                        .unwrap_or(-1);
-                    SelectResult {
-                        name: s.name.clone(),
-                        selected_value: s.selected.clone(),
-                        selected_index: idx,
-                    }
-                })
-                .collect();
-        }
-    }
-    let input = app.input.lock().unwrap();
+        UserInput::from_dialog(&dialog, emit_inputs)
+    };
     if !input.is_empty() {
         println!("{}", input.render(app.json_output));
     }
@@ -224,6 +190,12 @@ fn open_url(url: &str) {
 
 #[tauri::command]
 fn get_state(app: tauri::State<App>) -> DialogState {
+    // The frontend requests state once the webview has loaded — the closest
+    // proxy to "window visible". Under DIALOG_BENCH, report and exit.
+    if app.bench {
+        println!("BENCH_MS={}", app.start.elapsed().as_millis());
+        std::process::exit(0);
+    }
     app.dialog.lock().unwrap().clone()
 }
 
@@ -413,6 +385,7 @@ fn position_window(window: &tauri::WebviewWindow, anchor: &str, offset: f64) {
 }
 
 fn main() {
+    let start = std::time::Instant::now();
     #[cfg(windows)]
     attach_parent_console();
 
@@ -478,7 +451,8 @@ fn main() {
         quit_on_info: config.present("quitoninfo"),
         always_return_input: config.present("alwaysreturninput"),
         dialog: Mutex::new(state.clone()),
-        input: Mutex::new(UserInput::default()),
+        start,
+        bench: std::env::var_os("DIALOG_BENCH").is_some(),
     };
 
     // SIGTERM/console-termination → exit 40 (AppVariables exit40).

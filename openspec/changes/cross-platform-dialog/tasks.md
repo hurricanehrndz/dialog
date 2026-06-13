@@ -75,8 +75,8 @@
 
 ## 11. Compatibility verification
 
-- [ ] 11.1 Build the compat harness: table-driven cases of invocation → expected exit code/stdout, and command-file scripts → expected state
-- [ ] 11.2 Record fixture cases from real community scripts (Setup-Your-Mac, Baseline patterns) and swiftDialog docs examples
-- [ ] 11.3 macOS CI job running real swiftDialog side-by-side to detect contract drift
-- [ ] 11.4 Write COMPATIBILITY.md documenting tier status and known deviations per option
-- [ ] 11.5 Cold-start benchmark (<500 ms to visible window target) on both platforms in CI
+- [x] 11.1 Build the compat harness: table-driven cases of invocation → expected exit code/stdout, and command-file scripts → expected state (`crates/dialog-core/tests/compat.rs`; `UserInput::from_dialog` shared with the app's quit path)
+- [x] 11.2 Record fixture cases from real community scripts (Setup-Your-Mac, Baseline patterns) and swiftDialog docs examples (embedded in the harness tables)
+- [x] 11.3 macOS CI job (`drift-vs-swiftdialog`) installs swiftDialog v3.0.1 and compares headless contract surfaces (`--checksum` byte-for-byte, error exit codes) — full visual comparison stays on the rig. Authored; runs on a real macOS runner (awaits a CI dispatch).
+- [x] 11.4 Write COMPATIBILITY.md documenting tier status and known deviations per option (option-status table + D-1…D-5)
+- [x] 11.5 Cold-start benchmark (`coldstart-bench`, macOS+Windows matrix): `DIALOG_BENCH` prints process-start→first-render and exits; CI guards regressions. Mechanism verified on the rig — **~191 ms** on the macOS host (target <500 ms).

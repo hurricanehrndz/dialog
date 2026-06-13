@@ -4,6 +4,7 @@
 //! select/checkbox/list lines are quoted, plain `SelectedIndex` is a bare
 //! number.
 
+use crate::state::DialogState;
 use serde_json::{json, Map, Value};
 
 #[derive(Debug, Clone)]
@@ -26,6 +27,51 @@ pub struct UserInput {
 }
 
 impl UserInput {
+    /// Collect the output an exit emits from the dialog state — the exact
+    /// mapping the app uses on quit. List selections are included whenever
+    /// `--enablelistselect` is set; textfields/checkboxes/selects only when
+    /// `emit_inputs` (button1, or any exit under `--alwaysreturninput`).
+    pub fn from_dialog(state: &DialogState, emit_inputs: bool) -> Self {
+        let mut input = UserInput::default();
+        if state.list_select_enabled {
+            input.list_selections = state
+                .list_items
+                .iter()
+                .map(|i| (i.title.clone(), i.selected))
+                .collect();
+        }
+        if emit_inputs {
+            input.textfields = state
+                .text_fields
+                .iter()
+                .map(|f| (f.name.clone(), f.value.clone()))
+                .collect();
+            input.checkboxes = state
+                .checkboxes
+                .iter()
+                .map(|c| (c.name.clone(), c.checked))
+                .collect();
+            input.selects = state
+                .selects
+                .iter()
+                .map(|s| {
+                    let selected_index = s
+                        .values
+                        .iter()
+                        .position(|v| v == &s.selected)
+                        .map(|i| i as i64)
+                        .unwrap_or(-1);
+                    SelectResult {
+                        name: s.name.clone(),
+                        selected_value: s.selected.clone(),
+                        selected_index,
+                    }
+                })
+                .collect();
+        }
+        input
+    }
+
     pub fn is_empty(&self) -> bool {
         self.textfields.is_empty()
             && self.selects.is_empty()

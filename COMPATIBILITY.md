@@ -4,6 +4,33 @@ Target contract: **swiftDialog v3.0.1** (`.ext/swiftDialog`). This document
 records intentional deviations and known gaps, discovered by running our
 binary side by side with the real one on the test rig.
 
+Every one of swiftDialog's 132 options **parses** (degrade-don't-break): an
+option that isn't wired up warns on stderr and no-ops, so the dialog always
+shows. **83/132 are implemented end-to-end** today; the authoritative list is
+`implemented()` in `crates/dialog-app/src/main.rs`, and the headless contract
+is pinned by `crates/dialog-core/tests/compat.rs`.
+
+## Option status by capability
+
+Status key: ✅ implemented · ◐ degraded/best-effort · ⏳ deferred · ✋ dropped ·
+∅ parses-but-no-op (tier/platform).
+
+| Capability | ✅ Implemented | ◐ / ⏳ / ✋ |
+| --- | --- | --- |
+| CLI / IO | `--version` `--help` `--verbose` `--json` `--jsonfile` `--jsonstring` `--checksum` (SHA256 util) | — |
+| Core content | `--title` `--subtitle` `--message` `--messagealignment` `--messageposition` `--titlefont` `--messagefont` `--small` `--big` `--mini` `--style` | markdown ≈ CommonMark (◐, doc'd) |
+| Icons | `--icon` (file, `https://`, `SF=`, keywords) `--iconsize` `--iconalpha` `--iconalttext` `--overlayicon` `--hideicon` `--centreicon` `--warningicon` `--cautionicon` `--infoicon` | native SF Symbols ⏳ · `.app`/`.exe`/`.lnk` extraction ⏳ · SF override pack ⏳ (D-3) |
+| Branding | `--bannerimage` `--bannertitle` `--bannertext` `--bannerheight` `--background` `--bgalpha` `--bgposition` `--bgfill` `--bgscale` | — |
+| Buttons | `--button1text` `--button1action` `--button1disabled` `--button2` `--button2text` `--button2action` `--button2disabled` `--infobutton(text/action)` `--quitoninfo` `--button{1,2,info}symbol` `--buttonstyle` `--buttonsize` `--buttontextsize` `--timer` `--hidetimerbar` `--quitkey` | — |
+| User input | `--textfield` (+sub-opts) `--textfieldlivevalidation` `--checkbox` `--checkboxstyle` `--selecttitle` `--selectvalues` `--selectdefault` `--selectstyle` `--alwaysreturninput` | regex matcher is anchored-subset (◐, D-? / Known gaps) |
+| List / progress | `--listitem` `--liststyle` `--enablelistselect` `--progress` `--progresstext` `--infotext` | — |
+| Command file | `--commandfile` + content/list/control verbs | — |
+| Window | `--width` `--height` `--position` `--positionoffset` `--ontop` `--moveable` `--resizable` `--windowbuttons` (+close→15) `--fullscreen` `--blurscreen` `--appearance` | `--blurscreen` compositor blur → CSS dim/blur ◐ (D-5) · `--showonallscreens` ✋ (D-5) · `--windowbuttons` flag-only, not `<min,max,close>` ◐ (D-4) |
+| macOS Tier 3 | — | `--notification` `--sound` `--seticon` `--dockicon` `--dockiconbadge` `--showdockicon` `--enablenotificationsounds` `--loginwindow` ∅ (macOS-only / not in scope) |
+
+Exit codes are exact: button1=0, button2=2, info=3, timer=4, `quit:`=5,
+quitkey=10, window-close=15, SIGTERM=40, JSON-import/file errors=202.
+
 ## Verified-equivalent behavior
 
 - Exit codes: button1=0, button2=2, info=3, timer=4, `quit:`=5, quitkey=10,
