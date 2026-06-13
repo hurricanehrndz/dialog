@@ -1345,10 +1345,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       message.classList.add("v-bottom");
     }
     applyFontSpec(message, state.messageFont);
-    if (state.listItems.length > 0) {
+    const hasInputs = state.textFields.length > 0 || state.checkboxes.length > 0 || state.selects.length > 0;
+    if (state.listItems.length > 0 || hasInputs) {
       const content = el("div", "content-col");
       if (state.message.trim()) content.appendChild(message);
-      content.appendChild(renderList(state));
+      if (hasInputs) content.appendChild(renderInputs(state));
+      if (state.listItems.length > 0) content.appendChild(renderList(state));
       main.appendChild(content);
     } else {
       main.appendChild(message);
@@ -1406,10 +1408,99 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     }
     const b1 = el("button", "btn primary", state.button1.text);
     b1.disabled = !state.button1.enabled;
-    b1.addEventListener("click", () => sendEvent("button1"));
+    b1.addEventListener("click", () => void invoke("submit"));
     buttons.appendChild(b1);
     root.appendChild(buttons);
+    const sheet = el("div", "error-sheet");
+    sheet.id = "error-sheet";
+    root.appendChild(sheet);
     document.body.replaceChildren(root);
+  }
+  function renderInputs(state) {
+    const box = el("div", "inputs");
+    for (const sel of state.selects) {
+      const row = el("div", "input-row");
+      row.appendChild(el("label", "input-label", sel.title));
+      if (sel.style === "radio") {
+        const group = el("div", "radio-group");
+        for (const v2 of sel.values) {
+          const opt = el("label", "radio-opt");
+          const radio = el("input");
+          radio.type = "radio";
+          radio.name = `sel-${sel.name}`;
+          radio.checked = v2 === sel.selected;
+          radio.addEventListener(
+            "change",
+            () => invoke("set_select", { name: sel.name, value: v2 })
+          );
+          opt.appendChild(radio);
+          opt.appendChild(document.createTextNode(v2));
+          group.appendChild(opt);
+        }
+        row.appendChild(group);
+      } else {
+        const dropdown = el("select", "input-control");
+        if (!sel.selected) {
+          const placeholder = el("option", void 0, "");
+          placeholder.value = "";
+          dropdown.appendChild(placeholder);
+        }
+        for (const v2 of sel.values) {
+          const opt = el("option", void 0, v2);
+          opt.value = v2;
+          opt.selected = v2 === sel.selected;
+          dropdown.appendChild(opt);
+        }
+        dropdown.addEventListener(
+          "change",
+          () => invoke("set_select", { name: sel.name, value: dropdown.value })
+        );
+        row.appendChild(dropdown);
+      }
+      box.appendChild(row);
+    }
+    for (const tf of state.textFields) {
+      const row = el("div", "input-row");
+      row.appendChild(el("label", "input-label", tf.title));
+      const input = el("input", "input-control");
+      input.type = tf.secure ? "password" : "text";
+      input.value = tf.value;
+      if (tf.prompt) input.placeholder = tf.prompt;
+      input.addEventListener(
+        "input",
+        () => invoke("set_field", { name: tf.name, value: input.value })
+      );
+      row.appendChild(input);
+      box.appendChild(row);
+    }
+    for (const cb of state.checkboxes) {
+      const row = el("label", "checkbox-row");
+      const input = el("input");
+      input.type = "checkbox";
+      input.checked = cb.checked;
+      input.disabled = cb.disabled;
+      if (cb.style === "switch") input.classList.add("switch");
+      input.addEventListener(
+        "change",
+        () => invoke("set_checkbox", { name: cb.name, checked: input.checked })
+      );
+      row.appendChild(input);
+      row.appendChild(el("span", "checkbox-label", cb.label));
+      box.appendChild(row);
+    }
+    return box;
+  }
+  function showValidationErrors(messages) {
+    const sheet = document.getElementById("error-sheet");
+    if (!sheet) return;
+    if (messages.length === 0) {
+      sheet.classList.remove("visible");
+      return;
+    }
+    sheet.replaceChildren(
+      ...messages.map((m2) => el("div", "error-line", `\u2022 ${m2}`))
+    );
+    sheet.classList.add("visible");
   }
   var current = null;
   function show(state) {
@@ -1422,10 +1513,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       sendEvent("quitkey");
       return;
     }
-    if (e.key === "Enter" && current.button1.enabled) sendEvent("button1");
+    if (e.key === "Enter" && current.button1.enabled) void invoke("submit");
     if (e.key === "Escape" && current.button2.visible && current.button2.enabled)
       sendEvent("button2");
   });
   invoke("get_state").then((state) => show(state));
   void window.__TAURI__.event.listen("state", (e) => show(e.payload));
+  void window.__TAURI__.event.listen(
+    "validation-errors",
+    (e) => showValidationErrors(e.payload)
+  );
 })();

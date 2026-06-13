@@ -111,6 +111,45 @@ pub struct WindowState {
     pub appearance: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextFieldState {
+    /// `name=` if given, else the title — the output key.
+    pub name: String,
+    pub title: String,
+    pub value: String,
+    pub prompt: Option<String>,
+    pub secure: bool,
+    pub required: bool,
+    pub regex: Option<String>,
+    pub regex_error: Option<String>,
+    /// `confirm` field: value must match the named field (or the prior one).
+    pub is_date: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckboxState {
+    pub name: String,
+    pub label: String,
+    pub checked: bool,
+    pub disabled: bool,
+    /// "checkbox" | "switch" (from --checkboxstyle).
+    pub style: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectState {
+    pub name: String,
+    pub title: String,
+    pub values: Vec<String>,
+    pub selected: String,
+    pub required: bool,
+    /// "dropdown" | "radio" (from --selectstyle or the `radio` flag).
+    pub style: String,
+}
+
 /// Everything the renderer needs to draw the dialog. Tier 1 content;
 /// grows as capabilities land.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -138,6 +177,9 @@ pub struct DialogState {
     pub list_select_enabled: bool,
     /// `--liststyle` (compact | expanded).
     pub list_style: Option<String>,
+    pub text_fields: Vec<TextFieldState>,
+    pub checkboxes: Vec<CheckboxState>,
+    pub selects: Vec<SelectState>,
     pub progress: Option<ProgressState>,
     /// `--infotext` / `infotext:` — small text in the bottom-left.
     pub info_text: Option<String>,
@@ -152,6 +194,185 @@ pub struct DialogState {
 
 fn opt_value(config: &Config, name: &str) -> Option<String> {
     config.value(name).map(|v| v.into_owned())
+}
+
+/// Textfields from repeated `--textfield` specs and/or the JSON array.
+/// Spec: `"Title,required,secure,prompt=..,value=..,regex=..,regexerror=..,name=.."`
+fn parse_text_fields(config: &Config) -> Vec<TextFieldState> {
+    use crate::suboptions::parse_spec;
+    let mut fields: Vec<TextFieldState> = config
+        .cli
+        .values("textfield")
+        .iter()
+        .map(|spec| {
+            let s = parse_spec(spec);
+            TextFieldState {
+                name: s.get("name").unwrap_or(&s.title).to_string(),
+                title: s.title.clone(),
+                value: s.get("value").unwrap_or_default().to_string(),
+                prompt: s.get("prompt").map(str::to_string),
+                secure: s.flag("secure"),
+                required: s.flag("required"),
+                regex: s.get("regex").map(str::to_string),
+                regex_error: s.get("regexerror").map(str::to_string),
+                is_date: s.flag("isdate"),
+            }
+        })
+        .collect();
+    if let Some(arr) = config.json_array("textfield") {
+        for v in arr {
+            if let Some(f) = textfield_from_json(v) {
+                fields.push(f);
+            }
+        }
+    }
+    fields
+}
+
+fn textfield_from_json(v: &serde_json::Value) -> Option<TextFieldState> {
+    match v {
+        serde_json::Value::String(title) => Some(TextFieldState {
+            name: title.clone(),
+            title: title.clone(),
+            value: String::new(),
+            prompt: None,
+            secure: false,
+            required: false,
+            regex: None,
+            regex_error: None,
+            is_date: false,
+        }),
+        serde_json::Value::Object(o) => {
+            let s = |k: &str| o.get(k).and_then(|x| x.as_str()).map(str::to_string);
+            let b = |k: &str| o.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
+            let title = s("title")?;
+            Some(TextFieldState {
+                name: s("name").unwrap_or_else(|| title.clone()),
+                title,
+                value: s("value").unwrap_or_default(),
+                prompt: s("prompt"),
+                secure: b("secure"),
+                required: b("required"),
+                regex: s("regex"),
+                regex_error: s("regexerror"),
+                is_date: b("isdate"),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Checkboxes from repeated `--checkbox` specs and/or JSON array.
+fn parse_checkboxes(config: &Config) -> Vec<CheckboxState> {
+    use crate::suboptions::parse_spec;
+    let global_style = config
+        .value("checkboxstyle")
+        .map(|v| v.into_owned())
+        .unwrap_or_else(|| "checkbox".into());
+    let mut boxes: Vec<CheckboxState> = config
+        .cli
+        .values("checkbox")
+        .iter()
+        .map(|spec| {
+            let s = parse_spec(spec);
+            CheckboxState {
+                name: s.get("name").unwrap_or(&s.title).to_string(),
+                label: s.title.clone(),
+                checked: s.flag("checked"),
+                disabled: s.flag("disabled"),
+                style: global_style.clone(),
+            }
+        })
+        .collect();
+    if let Some(arr) = config.json_array("checkbox") {
+        for v in arr {
+            if let serde_json::Value::Object(o) = v {
+                let s = |k: &str| o.get(k).and_then(|x| x.as_str()).map(str::to_string);
+                let b = |k: &str| o.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
+                if let Some(label) = s("label") {
+                    boxes.push(CheckboxState {
+                        name: s("name").unwrap_or_else(|| label.clone()),
+                        label,
+                        checked: b("checked"),
+                        disabled: b("disabled"),
+                        style: global_style.clone(),
+                    });
+                }
+            }
+        }
+    }
+    boxes
+}
+
+/// Selects from paired `--selecttitle`/`--selectvalues`/`--selectdefault`
+/// (positionally matched) and/or the JSON `selectitems` array.
+fn parse_selects(config: &Config) -> Vec<SelectState> {
+    use crate::suboptions::parse_spec;
+    let titles = config.cli.values("selecttitle");
+    let values = config.cli.values("selectvalues");
+    let defaults = config.cli.values("selectdefault");
+    let styles = config.cli.values("selectstyle");
+    let mut selects = Vec::new();
+    for (i, title_spec) in titles.iter().enumerate() {
+        let s = parse_spec(title_spec);
+        let vals: Vec<String> = values
+            .get(i)
+            .map(|v| v.split(',').map(|x| x.trim().to_string()).collect())
+            .unwrap_or_default();
+        let style = styles
+            .get(i)
+            .cloned()
+            .or_else(|| s.flag("radio").then(|| "radio".to_string()))
+            .unwrap_or_else(|| "dropdown".to_string());
+        selects.push(SelectState {
+            name: s.get("name").unwrap_or(&s.title).to_string(),
+            title: s.title.clone(),
+            values: vals,
+            selected: defaults.get(i).cloned().unwrap_or_default(),
+            required: s.flag("required"),
+            style,
+        });
+    }
+    if let Some(arr) = config.json_array("selectitems") {
+        for v in arr {
+            if let serde_json::Value::Object(o) = v {
+                let title = o.get("title").and_then(|x| x.as_str()).unwrap_or("");
+                if title.is_empty() {
+                    continue;
+                }
+                let vals = o
+                    .get("values")
+                    .and_then(|x| x.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                selects.push(SelectState {
+                    name: o
+                        .get("name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or(title)
+                        .to_string(),
+                    title: title.to_string(),
+                    values: vals,
+                    selected: o
+                        .get("default")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    required: o.get("required").and_then(|x| x.as_bool()).unwrap_or(false),
+                    style: o
+                        .get("style")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("dropdown")
+                        .to_string(),
+                });
+            }
+        }
+    }
+    selects
 }
 
 /// List items from repeated `--listitem` specs and/or the JSON `listitem`
@@ -320,6 +541,9 @@ impl DialogState {
             list_items: parse_list_items(config),
             list_select_enabled: config.present("enablelistselect"),
             list_style: opt_value(config, "liststyle"),
+            text_fields: parse_text_fields(config),
+            checkboxes: parse_checkboxes(config),
+            selects: parse_selects(config),
             progress: config.present("progress").then(|| ProgressState {
                 total: config
                     .value("progress")

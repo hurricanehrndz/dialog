@@ -204,6 +204,55 @@
         transition: width 0.3s ease;
       }
 
+      .inputs {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .input-row {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .input-label { font-size: 12px; opacity: 0.8; }
+      .input-control {
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 8px;
+        border: 1px solid var(--btn-border);
+        border-radius: 6px;
+        background: var(--btn-bg);
+        color: var(--fg);
+        width: 100%;
+      }
+      body.platform-windows .input-control { border-radius: 4px; }
+      .input-control:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+      }
+      .input-control.invalid { border-color: #dc3545; }
+      .radio-group { display: flex; flex-direction: column; gap: 4px; }
+      .radio-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .checkbox-label { user-select: none; }
+      .error-sheet {
+        display: none;
+        margin-top: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        background: color-mix(in srgb, #dc3545 14%, transparent);
+        border: 1px solid color-mix(in srgb, #dc3545 40%, transparent);
+        font-size: 12px;
+      }
+      .error-sheet.visible { display: block; }
+      .error-line { color: #dc3545; }
+
       .progress { padding: 4px 0 2px; }
       .progress-bar {
         height: 8px;

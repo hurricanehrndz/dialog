@@ -6,9 +6,10 @@ use dialog_core::{
     compat,
     config::Config,
     exit_codes,
-    output::UserInput,
+    output::{SelectResult, UserInput},
     parser,
     state::DialogState,
+    validation::{validate, Submission},
 };
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -71,6 +72,16 @@ fn implemented() -> HashSet<&'static str> {
         "listitem",
         "liststyle",
         "enablelistselect",
+        // user-input
+        "textfield",
+        "textfieldlivevalidation",
+        "checkbox",
+        "checkboxstyle",
+        "selecttitle",
+        "selectvalues",
+        "selectdefault",
+        "selectstyle",
+        "alwaysreturninput",
     ]
     .into_iter()
     .collect()
@@ -121,13 +132,16 @@ struct App {
     input: Mutex<UserInput>,
     json_output: bool,
     quit_on_info: bool,
+    always_return_input: bool,
 }
 
 /// Print collected output (if any) and exit with the given contract code.
+/// Input values are emitted on button1 (code 0) always, and on other exit
+/// paths only under `--alwaysreturninput` (user-input spec).
 fn quit(app: &App, code: i32) -> ! {
-    let mut input = app.input.lock().unwrap();
     {
         let dialog = app.dialog.lock().unwrap();
+        let mut input = app.input.lock().unwrap();
         if dialog.list_select_enabled {
             input.list_selections = dialog
                 .list_items
@@ -135,7 +149,37 @@ fn quit(app: &App, code: i32) -> ! {
                 .map(|i| (i.title.clone(), i.selected))
                 .collect();
         }
+        if code == exit_codes::BUTTON1 || app.always_return_input {
+            input.textfields = dialog
+                .text_fields
+                .iter()
+                .map(|f| (f.name.clone(), f.value.clone()))
+                .collect();
+            input.checkboxes = dialog
+                .checkboxes
+                .iter()
+                .map(|c| (c.name.clone(), c.checked))
+                .collect();
+            input.selects = dialog
+                .selects
+                .iter()
+                .map(|s| {
+                    let idx = s
+                        .values
+                        .iter()
+                        .position(|v| v == &s.selected)
+                        .map(|i| i as i64)
+                        .unwrap_or(-1);
+                    SelectResult {
+                        name: s.name.clone(),
+                        selected_value: s.selected.clone(),
+                        selected_index: idx,
+                    }
+                })
+                .collect();
+        }
     }
+    let input = app.input.lock().unwrap();
     if !input.is_empty() {
         println!("{}", input.render(app.json_output));
     }
@@ -164,16 +208,67 @@ fn open_link(url: String) {
     }
 }
 
+/// Update a live input value from the renderer; stored straight into
+/// DialogState so it survives re-renders and feeds validation/output.
+#[tauri::command]
+fn set_field(app: tauri::State<App>, name: String, value: String) {
+    let mut d = app.dialog.lock().unwrap();
+    if let Some(f) = d.text_fields.iter_mut().find(|f| f.name == name) {
+        f.value = value;
+    }
+}
+
+#[tauri::command]
+fn set_checkbox(app: tauri::State<App>, name: String, checked: bool) {
+    let mut d = app.dialog.lock().unwrap();
+    if let Some(c) = d.checkboxes.iter_mut().find(|c| c.name == name) {
+        c.checked = checked;
+    }
+}
+
+#[tauri::command]
+fn set_select(app: tauri::State<App>, name: String, value: String) {
+    let mut d = app.dialog.lock().unwrap();
+    if let Some(s) = d.selects.iter_mut().find(|s| s.name == name) {
+        s.selected = value;
+    }
+}
+
+/// Button1 path: validate required/regex; on failure emit the error sheet
+/// and stay open, otherwise run the action and quit 0 with output.
+#[tauri::command]
+fn submit(app: tauri::State<App>, handle: tauri::AppHandle) {
+    let errors = {
+        let d = app.dialog.lock().unwrap();
+        let submission = Submission {
+            text_fields: d
+                .text_fields
+                .iter()
+                .map(|f| (f.name.clone(), f.value.clone()))
+                .collect(),
+            selects: d
+                .selects
+                .iter()
+                .map(|s| (s.name.clone(), s.selected.clone()))
+                .collect(),
+        };
+        validate(&d, &submission)
+    };
+    if !errors.is_empty() {
+        let messages: Vec<String> = errors.into_iter().map(|e| e.message).collect();
+        let _ = handle.emit("validation-errors", messages);
+        return;
+    }
+    let action = app.dialog.lock().unwrap().button1.action.clone();
+    if let Some(url) = action.filter(|u| !u.is_empty()) {
+        open_url(&url);
+    }
+    quit(&app, exit_codes::BUTTON1);
+}
+
 #[tauri::command]
 fn ui_event(app: tauri::State<App>, event: String) {
     match event.as_str() {
-        "button1" => {
-            let action = app.dialog.lock().unwrap().button1.action.clone();
-            if let Some(url) = action.filter(|u| !u.is_empty()) {
-                open_url(&url);
-            }
-            quit(&app, exit_codes::BUTTON1);
-        }
         "button2" => {
             let action = app.dialog.lock().unwrap().button2.action.clone();
             if let Some(url) = action.filter(|u| !u.is_empty()) {
@@ -315,6 +410,7 @@ fn main() {
     let app = App {
         json_output: config.present("json"),
         quit_on_info: config.present("quitoninfo"),
+        always_return_input: config.present("alwaysreturninput"),
         dialog: Mutex::new(state.clone()),
         input: Mutex::new(UserInput::default()),
     };
@@ -328,6 +424,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_state,
             ui_event,
+            submit,
+            set_field,
+            set_checkbox,
+            set_select,
             open_link,
             list_select
         ])

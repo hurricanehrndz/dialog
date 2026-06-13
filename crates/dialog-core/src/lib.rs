@@ -13,3 +13,4 @@ pub mod output;
 pub mod parser;
 pub mod state;
 pub mod suboptions;
+pub mod validation;
