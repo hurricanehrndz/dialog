@@ -46,11 +46,11 @@
 
 ## 7. User input (user-input)
 
-- [ ] 7.1 Textfields: sub-option parser (required/secure/prompt/value/regex/regexerror/name), rendering, masking
-- [ ] 7.2 Submit-time validation: required highlight + error sheet, regex check, don't-quit behavior
-- [ ] 7.3 Checkboxes and switch style; disabled state
-- [ ] 7.4 Dropdown selects and radio style; required validation; multiple groups
-- [ ] 7.5 Output integration for all input types incl. `--alwaysreturninput`
+- [x] 7.1 Textfields: sub-option parser (required/secure/prompt/value/regex/regexerror/name), rendering, masking
+- [x] 7.2 Submit-time validation: required highlight + error sheet, regex check, don't-quit behavior
+- [x] 7.3 Checkboxes and switch style; disabled state
+- [x] 7.4 Dropdown selects and radio style; required validation; multiple groups
+- [x] 7.5 Output integration for all input types incl. `--alwaysreturninput`
 
 ## 8. List and progress (list-progress)
 
