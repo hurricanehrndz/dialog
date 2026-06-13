@@ -428,10 +428,11 @@ fn parse_f64(config: &Config, name: &str, fallback: f64) -> f64 {
 impl DialogState {
     /// Translate parsed configuration into the initial render state.
     pub fn from_config(config: &Config) -> Self {
+        // `default-title` is swiftDialog's localization sentinel for "no
+        // title supplied" (resolves to ""); treat it and `none` as hidden.
         let title = match config.value("title").as_deref() {
-            Some("none") => None,
+            Some("none") | Some("default-title") | Some("") | None => None,
             Some(t) => Some(t.to_string()),
-            None => None,
         };
 
         let style = opt_value(config, "style");
@@ -483,10 +484,12 @@ impl DialogState {
             .to_string(),
             title,
             subtitle: opt_value(config, "subtitle"),
-            message: config
-                .value("message")
-                .map(|v| v.into_owned())
-                .unwrap_or_default(),
+            // `default-message` is the localization sentinel (resolves to
+            // ""); render nothing when the message isn't supplied.
+            message: match config.value("message").as_deref() {
+                Some("default-message") | None => String::new(),
+                Some(m) => m.to_string(),
+            },
             message_alignment: Alignment::parse_str(
                 config
                     .value("messagealignment")
@@ -611,6 +614,18 @@ mod tests {
     fn title_none_hides_title() {
         assert_eq!(state(&["--title", "none"]).title, None);
         assert_eq!(state(&["--title", "Hi"]).title.as_deref(), Some("Hi"));
+    }
+
+    #[test]
+    fn unsupplied_title_and_message_are_empty_not_sentinels() {
+        // regression: Windows pass showed the literal "default-message"
+        let s = state(&["--icon", "warning"]);
+        assert_eq!(s.title, None);
+        assert_eq!(s.message, "");
+        // explicit values still pass through
+        let s = state(&["--title", "T", "--message", "M"]);
+        assert_eq!(s.title.as_deref(), Some("T"));
+        assert_eq!(s.message, "M");
     }
 
     #[test]
