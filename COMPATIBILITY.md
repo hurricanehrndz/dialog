@@ -8,12 +8,31 @@ binary side by side with the real one on the test rig.
 
 - Exit codes: button1=0, button2=2, info=3, timer=4, `quit:`=5, quitkey=10,
   SIGTERM=40, file-not-found=202 (live-verified for 0/2/4/5).
-- JSON output structure on button1: `SelectedOption`/`SelectedIndex` (single
-  select), per-name `{selectedValue, selectedIndex}`, textfields as
-  `{name: value}`, checkboxes as `{name: bool}` — matches `System.swift`.
+- **Plain `key : value` output on button1: byte-for-byte identical** to
+  swiftDialog 3.0.1 (live-verified by driving a real Return press) — field
+  order (textfields → legacy SelectedOption/SelectedIndex → per-name select
+  → checkboxes), quoting quirks (textfield line unquoted, others quoted),
+  and the bare `SelectedIndex` number all match exactly.
+- JSON output content on button1: same keys/values as upstream
+  (`SelectedOption`/`SelectedIndex`, per-name `{selectedValue,
+  selectedIndex}`, textfields `{name: value}`, checkboxes `{name: bool}`) —
+  live-verified. See D-2 for the cosmetic formatting difference.
 - Command-file live updates: title/message(+append)/icon/progress/
-  progresstext/button text+enable/listitem statuses/list replace/quit.
+  progresstext/button text+enable/listitem statuses/list replace/quit
+  (verified live on macOS and Windows).
 - Unknown CLI options are ignored (dialog still shows), matching upstream.
+
+### D-2: JSON pretty-print formatting (cosmetic)
+swiftDialog emits SwiftyJSON's format — `"key" : value` (space before the
+colon) with non-deterministic key order. We emit standard `serde_json`
+pretty output — `"key": value` (space after only) with sorted keys. The
+JSON is **semantically identical**; `jq`, PowerShell `ConvertFrom-Json`,
+Python `json`, etc. parse both the same. We do not match the byte format
+because upstream's key order is non-deterministic (so unmatchable anyway)
+and standard JSON spacing is more portable. Scripts that parse JSON are
+unaffected; only a naive raw-string comparison of the JSON blob would
+differ. The **plain** output (above), which scripts grep far more often, is
+an exact match.
 
 ## Intentional deviations
 
