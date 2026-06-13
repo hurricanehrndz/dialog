@@ -11,6 +11,16 @@ interface ButtonState {
   action: string | null;
 }
 
+interface ListItem {
+  title: string;
+  subtitle: string | null;
+  icon: string | null;
+  status: string;
+  statusText: string;
+  progress: number | null;
+  selected: boolean;
+}
+
 interface DialogState {
   platform: "macos" | "windows" | "linux";
   title: string | null;
@@ -32,6 +42,9 @@ interface DialogState {
   button2: ButtonState;
   infoButton: ButtonState;
   timer: { seconds: number; hideBar: boolean } | null;
+  listItems: ListItem[];
+  listSelectEnabled: boolean;
+  listStyle: string | null;
   progress: { total: number; current: number | null; text: string; visible: boolean } | null;
   infoText: string | null;
   window: { appearance: string | null; moveable: boolean };
@@ -80,6 +93,50 @@ function applyFontSpec(node: HTMLElement, spec: string | null) {
 
 function sendEvent(event: string) {
   void invoke("ui_event", { event });
+}
+
+const STATUS_GLYPHS: Record<string, string> = {
+  success: "✓",
+  fail: "✕",
+  error: "✕",
+  pending: "•••",
+};
+
+function renderList(state: DialogState): HTMLElement {
+  const list = el("div", "list");
+  if (state.listStyle === "compact") list.classList.add("compact");
+  state.listItems.forEach((item, index) => {
+    const row = el("div", "list-row");
+    if (state.listSelectEnabled) {
+      const box = el("input") as HTMLInputElement;
+      box.type = "checkbox";
+      box.checked = item.selected;
+      box.addEventListener("change", () =>
+        invoke("list_select", { index, selected: box.checked }),
+      );
+      row.appendChild(box);
+    }
+    const text = el("div", "list-text");
+    text.appendChild(el("div", "list-title", item.title));
+    if (item.subtitle) text.appendChild(el("div", "list-subtitle", item.subtitle));
+    row.appendChild(text);
+    if (item.statusText) row.appendChild(el("div", "list-statustext", item.statusText));
+    const status = el("div", `list-status status-${item.status || "none"}`);
+    if (item.status === "wait") {
+      status.appendChild(el("div", "spinner"));
+    } else if (item.status === "progress") {
+      const bar = el("div", "row-progress");
+      const fill = el("div", "row-progress-fill");
+      fill.style.width = `${item.progress ?? 0}%`;
+      bar.appendChild(fill);
+      status.appendChild(bar);
+    } else if (STATUS_GLYPHS[item.status]) {
+      status.textContent = STATUS_GLYPHS[item.status];
+    }
+    row.appendChild(status);
+    list.appendChild(row);
+  });
+  return list;
 }
 
 function render(state: DialogState) {
@@ -134,7 +191,15 @@ function render(state: DialogState) {
     message.classList.add("v-bottom");
   }
   applyFontSpec(message, state.messageFont);
-  main.appendChild(message);
+
+  if (state.listItems.length > 0) {
+    const content = el("div", "content-col");
+    if (state.message.trim()) content.appendChild(message);
+    content.appendChild(renderList(state));
+    main.appendChild(content);
+  } else {
+    main.appendChild(message);
+  }
   root.appendChild(main);
 
   // Overall progress bar (+ progresstext) above the button row.

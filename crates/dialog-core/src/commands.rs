@@ -3,7 +3,7 @@
 //! parse to no known verb are ignored (command-file-ipc spec: malformed
 //! commands MUST NOT stop processing).
 
-use crate::state::{Alignment, DialogState, ProgressState, TimerState};
+use crate::state::{Alignment, DialogState, ListItemState, ProgressState, TimerState};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProgressCmd {
@@ -23,7 +23,10 @@ pub enum ProgressCmd {
 pub enum Command {
     Title(String),
     Subtitle(String),
-    Message { text: String, append: bool },
+    Message {
+        text: String,
+        append: bool,
+    },
     Icon(String),
     IconAlpha(f64),
     IconSize(f64),
@@ -40,8 +43,31 @@ pub enum Command {
     Position(String),
     QuitKey(String),
     Timer(TimerCmd),
+    ListItem(ListItemUpdate),
+    /// `list: a,b,c` replaces all rows; `list: clear` empties.
+    ListReplace(Vec<String>),
     Quit,
     Activate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListAction {
+    #[default]
+    Update,
+    Add,
+    Delete,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ListItemUpdate {
+    pub action: ListAction,
+    /// Row addressed by index (`index: <n>`) ...
+    pub index: Option<usize>,
+    /// ... or by title (`title: <t>`; also the new title for `add`).
+    pub title: Option<String>,
+    pub status: Option<String>,
+    pub status_text: Option<String>,
+    pub progress: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,8 +126,57 @@ pub fn parse_line(line: &str) -> Option<Command> {
         }),
         "quit" => Command::Quit,
         "activate" => Command::Activate,
+        "list" => match arg.to_lowercase().as_str() {
+            "clear" => Command::ListReplace(Vec::new()),
+            _ => Command::ListReplace(
+                arg.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+            ),
+        },
+        "listitem" => Command::ListItem(parse_listitem(arg)?),
         _ => return None,
     })
+}
+
+/// `listitem:` argument forms (DialogUpdatableContent.swift):
+/// keyed — `title: X, status: success, statustext: Done`,
+///         `index: 2, progress: 50`, `add, title: X, status: wait`,
+///         `delete, title: X` / `delete, index: 0`;
+/// legacy — `<title>: <status>` (split at the last colon).
+fn parse_listitem(arg: &str) -> Option<ListItemUpdate> {
+    let mut upd = ListItemUpdate::default();
+    let mut keyed = false;
+    for part in arg.split(',') {
+        let part = part.trim();
+        match part.split_once(':') {
+            Some((k, v)) => {
+                let v = v.trim();
+                keyed = true;
+                match k.trim().to_lowercase().as_str() {
+                    "title" => upd.title = Some(v.to_string()),
+                    "index" => upd.index = v.parse().ok(),
+                    "status" => upd.status = Some(v.to_string()),
+                    "statustext" => upd.status_text = Some(v.to_string()),
+                    "progress" => upd.progress = v.parse().ok(),
+                    _ => keyed = false,
+                }
+            }
+            None => match part.to_lowercase().as_str() {
+                "add" => upd.action = ListAction::Add,
+                "delete" => upd.action = ListAction::Delete,
+                _ => {}
+            },
+        }
+    }
+    if !keyed && upd.action == ListAction::Update {
+        // legacy form "<title>: <status>"
+        let (title, status) = arg.rsplit_once(':')?;
+        upd.title = Some(title.trim().to_string());
+        upd.status = Some(status.trim().to_string());
+    }
+    (upd.title.is_some() || upd.index.is_some()).then_some(upd)
 }
 
 fn parse_enabled(arg: &str) -> Option<bool> {
@@ -180,6 +255,46 @@ pub fn apply(state: &mut DialogState, cmd: &Command) -> bool {
             })
         }
         Command::Timer(TimerCmd::Hide) => state.timer = None,
+        Command::ListReplace(titles) => {
+            state.list_items = titles.iter().map(ListItemState::new).collect();
+        }
+        Command::ListItem(upd) => match upd.action {
+            ListAction::Add => {
+                let mut item = ListItemState::new(upd.title.clone().unwrap_or_default());
+                item.status = upd.status.clone().unwrap_or_default();
+                item.status_text = upd.status_text.clone().unwrap_or_default();
+                item.progress = upd.progress;
+                state.list_items.push(item);
+            }
+            ListAction::Delete => {
+                if let Some(i) = upd.index {
+                    if i < state.list_items.len() {
+                        state.list_items.remove(i);
+                    }
+                } else if let Some(t) = &upd.title {
+                    state.list_items.retain(|item| &item.title != t);
+                }
+            }
+            ListAction::Update => {
+                let item = match (upd.index, &upd.title) {
+                    (Some(i), _) => state.list_items.get_mut(i),
+                    (None, Some(t)) => state.list_items.iter_mut().find(|item| &item.title == t),
+                    _ => None,
+                };
+                if let Some(item) = item {
+                    if let Some(s) = &upd.status {
+                        item.status = s.clone();
+                    }
+                    if let Some(t) = &upd.status_text {
+                        item.status_text = t.clone();
+                    }
+                    if let Some(p) = upd.progress {
+                        item.progress = Some(p);
+                        item.status = "progress".into();
+                    }
+                }
+            }
+        },
         Command::Width(_)
         | Command::Height(_)
         | Command::Position(_)
@@ -278,5 +393,75 @@ mod tests {
     #[test]
     fn quit_parses() {
         assert_eq!(parse_line("quit:"), Some(Command::Quit));
+    }
+
+    #[test]
+    fn listitem_update_by_title_and_index() {
+        let mut s = fresh(&["--listitem", "Install Chrome", "--listitem", "Enroll"]);
+        apply(
+            &mut s,
+            &parse_line("listitem: title: Install Chrome, status: success, statustext: Done")
+                .unwrap(),
+        );
+        assert_eq!(s.list_items[0].status, "success");
+        assert_eq!(s.list_items[0].status_text, "Done");
+        apply(
+            &mut s,
+            &parse_line("listitem: index: 1, progress: 40").unwrap(),
+        );
+        assert_eq!(s.list_items[1].progress, Some(40.0));
+        assert_eq!(s.list_items[1].status, "progress");
+    }
+
+    #[test]
+    fn listitem_legacy_form() {
+        let mut s = fresh(&["--listitem", "Install Chrome"]);
+        apply(
+            &mut s,
+            &parse_line("listitem: Install Chrome: wait").unwrap(),
+        );
+        assert_eq!(s.list_items[0].status, "wait");
+    }
+
+    #[test]
+    fn listitem_add_and_delete() {
+        let mut s = fresh(&["--listitem", "A"]);
+        apply(
+            &mut s,
+            &parse_line("listitem: add, title: B, status: pending").unwrap(),
+        );
+        assert_eq!(s.list_items.len(), 2);
+        assert_eq!(s.list_items[1].title, "B");
+        apply(&mut s, &parse_line("listitem: delete, title: A").unwrap());
+        assert_eq!(s.list_items.len(), 1);
+        assert_eq!(s.list_items[0].title, "B");
+    }
+
+    #[test]
+    fn list_replace_and_clear() {
+        let mut s = fresh(&["--listitem", "Old"]);
+        apply(&mut s, &parse_line("list: Step 1, Step 2, Step 3").unwrap());
+        assert_eq!(
+            s.list_items
+                .iter()
+                .map(|i| i.title.as_str())
+                .collect::<Vec<_>>(),
+            ["Step 1", "Step 2", "Step 3"]
+        );
+        apply(&mut s, &parse_line("list: clear").unwrap());
+        assert!(s.list_items.is_empty());
+    }
+
+    #[test]
+    fn listitem_spec_parsing_from_cli() {
+        let s = fresh(&[
+            "--listitem",
+            "Enroll Device,status=wait,statustext=Working,subtitle=MDM",
+        ]);
+        let item = &s.list_items[0];
+        assert_eq!(item.title, "Enroll Device");
+        assert_eq!(item.status, "wait");
+        assert_eq!(item.status_text, "Working");
+        assert_eq!(item.subtitle.as_deref(), Some("MDM"));
     }
 }

@@ -1260,6 +1260,49 @@ Please report this to https://github.com/markedjs/marked.`, e) {
   function sendEvent(event) {
     void invoke("ui_event", { event });
   }
+  var STATUS_GLYPHS = {
+    success: "\u2713",
+    fail: "\u2715",
+    error: "\u2715",
+    pending: "\u2022\u2022\u2022"
+  };
+  function renderList(state) {
+    const list = el("div", "list");
+    if (state.listStyle === "compact") list.classList.add("compact");
+    state.listItems.forEach((item, index) => {
+      const row = el("div", "list-row");
+      if (state.listSelectEnabled) {
+        const box = el("input");
+        box.type = "checkbox";
+        box.checked = item.selected;
+        box.addEventListener(
+          "change",
+          () => invoke("list_select", { index, selected: box.checked })
+        );
+        row.appendChild(box);
+      }
+      const text = el("div", "list-text");
+      text.appendChild(el("div", "list-title", item.title));
+      if (item.subtitle) text.appendChild(el("div", "list-subtitle", item.subtitle));
+      row.appendChild(text);
+      if (item.statusText) row.appendChild(el("div", "list-statustext", item.statusText));
+      const status = el("div", `list-status status-${item.status || "none"}`);
+      if (item.status === "wait") {
+        status.appendChild(el("div", "spinner"));
+      } else if (item.status === "progress") {
+        const bar = el("div", "row-progress");
+        const fill = el("div", "row-progress-fill");
+        fill.style.width = `${item.progress ?? 0}%`;
+        bar.appendChild(fill);
+        status.appendChild(bar);
+      } else if (STATUS_GLYPHS[item.status]) {
+        status.textContent = STATUS_GLYPHS[item.status];
+      }
+      row.appendChild(status);
+      list.appendChild(row);
+    });
+    return list;
+  }
   function render(state) {
     document.body.classList.add(`platform-${state.platform}`);
     if (state.window.appearance) {
@@ -1302,7 +1345,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       message.classList.add("v-bottom");
     }
     applyFontSpec(message, state.messageFont);
-    main.appendChild(message);
+    if (state.listItems.length > 0) {
+      const content = el("div", "content-col");
+      if (state.message.trim()) content.appendChild(message);
+      content.appendChild(renderList(state));
+      main.appendChild(content);
+    } else {
+      main.appendChild(message);
+    }
     root.appendChild(main);
     if (state.progress && state.progress.visible) {
       const wrap = el("div", "progress");

@@ -56,6 +56,36 @@ pub struct TimerState {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ListItemState {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub icon: Option<String>,
+    /// "" | wait | progress | success | fail | error | pending | none
+    /// (ListView.swift:190-205).
+    pub status: String,
+    pub status_text: String,
+    /// Per-row progress percent when status is "progress".
+    pub progress: Option<f64>,
+    /// Selection state under --enablelistselect.
+    pub selected: bool,
+}
+
+impl ListItemState {
+    pub fn new(title: impl Into<String>) -> Self {
+        ListItemState {
+            title: title.into(),
+            subtitle: None,
+            icon: None,
+            status: String::new(),
+            status_text: String::new(),
+            progress: None,
+            selected: false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProgressState {
     /// Total steps (`--progress <n>`, default 100 when created by a verb).
     pub total: f64,
@@ -104,6 +134,10 @@ pub struct DialogState {
     pub button2: ButtonState,
     pub info_button: ButtonState,
     pub timer: Option<TimerState>,
+    pub list_items: Vec<ListItemState>,
+    pub list_select_enabled: bool,
+    /// `--liststyle` (compact | expanded).
+    pub list_style: Option<String>,
     pub progress: Option<ProgressState>,
     /// `--infotext` / `infotext:` — small text in the bottom-left.
     pub info_text: Option<String>,
@@ -118,6 +152,49 @@ pub struct DialogState {
 
 fn opt_value(config: &Config, name: &str) -> Option<String> {
     config.value(name).map(|v| v.into_owned())
+}
+
+/// List items from repeated `--listitem` specs and/or the JSON `listitem`
+/// array (strings or {title,subtitle,icon,status,statustext} objects).
+fn parse_list_items(config: &Config) -> Vec<ListItemState> {
+    let mut items: Vec<ListItemState> = config
+        .cli
+        .values("listitem")
+        .iter()
+        .map(|spec| {
+            let sub = crate::suboptions::parse_spec(spec);
+            let mut item = ListItemState::new(sub.title.clone());
+            item.subtitle = sub.get("subtitle").map(str::to_string);
+            item.icon = sub.get("icon").map(str::to_string);
+            item.status = sub.get("status").unwrap_or_default().to_string();
+            item.status_text = sub.get("statustext").unwrap_or_default().to_string();
+            item
+        })
+        .collect();
+
+    if let Some(json_items) = config.json_array("listitem") {
+        for v in json_items {
+            let mut item = match v {
+                serde_json::Value::String(s) => ListItemState::new(s.clone()),
+                serde_json::Value::Object(o) => {
+                    let get = |k: &str| o.get(k).and_then(|x| x.as_str()).map(str::to_string);
+                    let mut i = ListItemState::new(get("title").unwrap_or_default());
+                    i.subtitle = get("subtitle");
+                    i.icon = get("icon");
+                    i.status = get("status").unwrap_or_default();
+                    i.status_text = get("statustext").unwrap_or_default();
+                    i
+                }
+                _ => continue,
+            };
+            if item.title.is_empty() {
+                continue;
+            }
+            item.selected = false;
+            items.push(item);
+        }
+    }
+    items
 }
 
 fn parse_f64(config: &Config, name: &str, fallback: f64) -> f64 {
@@ -240,6 +317,9 @@ impl DialogState {
                 action: opt_value(config, "infobuttonaction"),
             },
             timer,
+            list_items: parse_list_items(config),
+            list_select_enabled: config.present("enablelistselect"),
+            list_style: opt_value(config, "liststyle"),
             progress: config.present("progress").then(|| ProgressState {
                 total: config
                     .value("progress")

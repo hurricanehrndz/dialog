@@ -67,6 +67,10 @@ fn implemented() -> HashSet<&'static str> {
         "progress",
         "progresstext",
         "infotext",
+        // list-progress
+        "listitem",
+        "liststyle",
+        "enablelistselect",
     ]
     .into_iter()
     .collect()
@@ -121,7 +125,17 @@ struct App {
 
 /// Print collected output (if any) and exit with the given contract code.
 fn quit(app: &App, code: i32) -> ! {
-    let input = app.input.lock().unwrap();
+    let mut input = app.input.lock().unwrap();
+    {
+        let dialog = app.dialog.lock().unwrap();
+        if dialog.list_select_enabled {
+            input.list_selections = dialog
+                .list_items
+                .iter()
+                .map(|i| (i.title.clone(), i.selected))
+                .collect();
+        }
+    }
     if !input.is_empty() {
         println!("{}", input.render(app.json_output));
     }
@@ -178,6 +192,15 @@ fn ui_event(app: tauri::State<App>, event: String) {
         }
         "quitkey" => quit(&app, exit_codes::QUIT_KEY),
         other => eprintln!("WARNING: unknown ui event {other}"),
+    }
+}
+
+/// Row selection toggled under --enablelistselect.
+#[tauri::command]
+fn list_select(app: tauri::State<App>, index: usize, selected: bool) {
+    let mut dialog = app.dialog.lock().unwrap();
+    if let Some(item) = dialog.list_items.get_mut(index) {
+        item.selected = selected;
     }
 }
 
@@ -302,7 +325,12 @@ fn main() {
 
     tauri::Builder::default()
         .manage(app)
-        .invoke_handler(tauri::generate_handler![get_state, ui_event, open_link])
+        .invoke_handler(tauri::generate_handler![
+            get_state,
+            ui_event,
+            open_link,
+            list_select
+        ])
         .setup(move |tauri_app| {
             let w = &state.window;
             // swiftDialog windows are chromeless (no title bar); dragging
