@@ -54,16 +54,16 @@
 
 ## 8. List and progress (list-progress)
 
-- [ ] 8.1 List rendering: rows with title/subtitle/icon/status/statustext, scrolling
-- [ ] 8.2 Status values wait/progress/success/fail/error/pending/none with platform glyphs and spinner animation
-- [ ] 8.3 Overall progress bar: determinate/indeterminate, progresstext
-- [ ] 8.4 `--enablelistselect` selectable rows + output contribution
+- [x] 8.1 List rendering: rows with title/subtitle/icon/status/statustext, scrolling
+- [x] 8.2 Status values wait/progress/success/fail/error/pending/none with platform glyphs and spinner animation
+- [x] 8.3 Overall progress bar: determinate/indeterminate, progresstext
+- [x] 8.4 `--enablelistselect` selectable rows + output contribution
 
 ## 9. Command file IPC (command-file-ipc)
 
 - [x] 9.1 File watcher: notify + polling fallback, seek-offset tailing, truncation reset, 0666/ACL creation, default paths per platform
 - [x] 9.2 Verb parser and dispatch onto DialogState (content verbs: title/subtitle/message+append/icon/image/progress/progresstext/infotext/infobox)
-- [ ] 9.3 List verbs: `listitem:` by title/index, add/delete, per-row progress, `list:` replace/clear
+- [x] 9.3 List verbs: `listitem:` by title/index, add/delete, per-row progress, `list:` replace/clear
 - [x] 9.4 Control verbs: button text/enable/disable, `quit:` (exit 5), `activate:`, width/height/position
 - [x] 9.5 Malformed-line tolerance and debug logging
 
